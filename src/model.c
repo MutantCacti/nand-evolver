@@ -115,6 +115,35 @@ void model_remove_nand(Model *model, size_t nand_index)
 }
 
 
+// MARK: model_arena_get
+
+word model_arena_get(Model *model, size_t bit_index)
+{
+    // First wrap the index into bounds
+    bit_index %= model->arena_size;
+
+    size_t w_index = word_index(bit_index);
+    size_t w_offset = word_offset(bit_index);
+
+    return model->arena[w_index] >> w_offset & (word)1;
+}
+
+
+// MARK: model_arena_set
+
+void model_arena_set(Model *model, size_t bit_index, word value)
+{
+    // First wrap the index into bounds
+    bit_index %= model->arena_size;
+
+    size_t w_index = word_index(bit_index);
+    size_t w_offset = word_offset(bit_index);
+
+    model->arena[w_index] &= ~((word)1 << w_offset);
+    model->arena[w_index] |= (value & (word)1) << w_offset;
+}
+
+
 // MARK: model_update_arena_size
 
 void model_update_arena_size(Model *model, size_t new_arena_size)
@@ -136,8 +165,21 @@ void model_update_arena_size(Model *model, size_t new_arena_size)
         // Zero-initialise the newly allocated part of the arena
         size_t old_num_words = num_words(model->arena_size);
         memset(new_arena + old_num_words, 0, (new_num_words - old_num_words) * sizeof(word));
-        word old_max_word_mask = (word)-1 << word_offset(model->arena_size);
-        new_arena[word_index(model->arena_size)] &= old_max_word_mask - 1;
+
+        // Memset doesn't clear bits in existing words
+        // The previous highest word will not be cleared but may be within the bounds of the new arena
+        // So we need to clear the bits above the old arena size in the same word
+        word old_max_word_mask = (word)-1 << word_offset(model->arena_size);    // 1..111 << 2 = 1..100
+        new_arena[word_index(model->arena_size)] &= ~old_max_word_mask;         // ~1..100 = 0..011
+    } else {
+        // Existing Nands may now have out of bounds indices
+        // Wrap them into bounds using modulo (same as model_add_nand)
+        for (size_t i = 0; i < model->num_nands; i++)
+        {
+            model->nands[i].input1_index %= new_arena_size;
+            model->nands[i].input2_index %= new_arena_size;
+            model->nands[i].output_index %= new_arena_size;
+        }
     }
 
     model->arena = new_arena;

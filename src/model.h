@@ -51,6 +51,8 @@ size_t word_offset(size_t bit_index);
 Model *model_init(size_t arena_size);
 void model_add_nand(Model *model, size_t input1_index, size_t input2_index, size_t output_index);
 void model_remove_nand(Model *model, size_t nand_index);
+word model_arena_get(Model *model, size_t bit_index);
+void model_arena_set(Model *model, size_t bit_index, word value);
 void model_update_arena_size(Model *model, size_t new_arena_size);
 void model_compute_ticks(Model *model, int num_ticks);
 void model_free(Model *model);
