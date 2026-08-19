@@ -7,33 +7,81 @@
  */
 #include <stdio.h>
 #include <string.h>
+#include <sys/time.h>
+#include <signal.h>
 #include "test.h"
 
 
-void print_arena(Model *model)
+#define TARGET_FRAME_US 16666 // 60 FPS
+static volatile sig_atomic_t running = 1;
+
+
+long long get_time_us(void)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (long long)tv.tv_sec * 1000000LL + (long long)tv.tv_usec;
+}
+
+
+void handle_exit_signal(int sig)
+{
+    (void)sig;
+    running = 0;
+}
+
+
+void arena_string(Model *model, char *arena_str)
 {
     for (size_t i = 0; i < model->arena_size; i++)
     {
         word w = model->arena[word_index(i)];
         word bit = (w >> word_offset(i)) & (word)1;
-        printf("%lu", bit);
+        arena_str[i] = bit ? '1' : '0';
     }
-    fprintf(stdout, "\n");
+    arena_str[model->arena_size] = '\0';
 }
 
 
 int main(void)
 {
-    Model *m = model_init(3);
-    print_arena(m);
+    signal(SIGINT, handle_exit_signal);
+    signal(SIGTERM, handle_exit_signal);
 
+    enable_raw_mode(); // Make terminal input non-echo and non-canonical (line-by-line)
     test_init_input_listener("/dev/input/event3");
 
-    for (;;)
+    printf("Running at %d FPS\n", 1000000 / TARGET_FRAME_US);
+
+    Model *m = model_init(3);
+    printf("Initialised model (arena_size=%zu, num_nands=%zu)\n", m->arena_size, m->num_nands);
+
+    char arena_str[m->arena_size + 1];
+    int error = 0;
+    while (running)
     {
-        printf("%d\n", test_read_error(m));
-        usleep(100000);
+        long long start_time = get_time_us();
+
+        test_write_input(m);
+        model_compute_ticks(m, 1);
+
+        error = test_read_error(m);
+
+        arena_string(m, arena_str);
+        printf("\r[arena: %s] error: %d\033[K", arena_str, error);
+
+        fflush(stdout);
+
+        long long work_time = get_time_us() - start_time;
+        if (work_time < TARGET_FRAME_US) {
+            usleep(TARGET_FRAME_US - work_time);
+        } else {
+            long long work_time_ms = work_time / 1000;
+            fprintf(stderr, "\nmain: Frame dropped (work time: %lld ms)\n", work_time_ms);
+        }
     }
 
+    printf("\nExiting...\n");
+    model_free(m);
     return 0;
 }
