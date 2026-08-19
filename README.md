@@ -7,6 +7,7 @@ In progress
 ## Instructions
 
 ```sh
-make    # build executable
-./nande # run executable
+sudo usermod -aG input <USER>   # Grant yourself input permissions (then relog)
+make                            # build executable
+./nande                         # run executable
 ```

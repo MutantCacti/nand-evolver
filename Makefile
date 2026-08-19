@@ -1,23 +1,22 @@
 CC = clang
-CFLAGS = -Wall -Wextra -fsanitize=address,undefined -g
+CFLAGS = -Wall -Wextra -fsanitize=address,undefined -g -MMD -MP
+OBJS = main.o test.o model.o
 
 all: nande
 
-nande: model.o test.o main.o
-	$(CC) $(CFLAGS) main.o test.o model.o -o nande
-	-rm -f *.o
+nande: $(OBJS)
+	$(CC) $(CFLAGS) $^ -o $@
 	@echo "Built successfully"
 
-main.o:
-	$(CC) $(CFLAGS) -c src/main.c
-
-test.o:
-	$(CC) $(CFLAGS) -c src/test.c
-
-model.o:
-	$(CC) $(CFLAGS) -c src/model.c
+%.o: src/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	-rm -f *.o nande
+	-rm -f *.o *.d nande
 
-again: clean nande
+again: clean
+	$(MAKE) all
+
+.PHONY: all clean again
+
+-include $(wildcard *.d)
