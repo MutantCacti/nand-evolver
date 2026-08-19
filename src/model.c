@@ -100,6 +100,30 @@ void model_add_nand(Model *model, size_t input1_index, size_t input2_index, size
 }
 
 
+// MARK: model_nands_get
+
+Nand model_nands_get(Model *model, size_t nand_index)
+{
+    // Wrap index into bounds with modulo
+    return model->nands[nand_index % model->num_nands];
+}
+
+
+// MARK: model_nands_set
+
+void model_nands_set(Model *model, size_t nand_index, size_t input1_index, size_t input2_index, size_t output_index)
+{
+    Nand new_nand = {
+        .input1_index = input1_index % model->arena_size,
+        .input2_index = input2_index % model->arena_size,
+        .output_index = output_index % model->arena_size
+    };
+    model->nands[nand_index % model->num_nands] = new_nand;
+}
+
+
+// MARK: model_remove_nand
+
 void model_remove_nand(Model *model, size_t nand_index)
 {
     if (nand_index >= model->num_nands) {
