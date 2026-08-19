@@ -13,13 +13,16 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <linux/input.h>
+#include <termios.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include "model.h"
 
 
+void enable_raw_mode(void);
+word read_key_as_word(int key_code);
 void test_init_input_listener(char *input_device);
 void test_write_input(Model *model);
-int test_read_output(Model *model);
 int test_read_error(Model *model);
 
 
