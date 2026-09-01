@@ -51,12 +51,15 @@ Model *model_init(size_t arena_size)
     word *arena = calloc(num_words(arena_size), sizeof(word));
     if (!arena) {
         fprintf(stderr, "model_init: Arena allocation failed\n");
+        free(nands);
         return NULL;
     }
 
     Model *model = calloc(1, sizeof(Model));
     if (!model) {
         fprintf(stderr, "model_init: Model struct allocation failed\n");
+        free(nands);
+        free(arena);
         return NULL;
     }
 
@@ -105,6 +108,7 @@ void model_add_nand(Model *model, size_t input1_index, size_t input2_index, size
 Nand model_nands_get(Model *model, size_t nand_index)
 {
     // Wrap index into bounds with modulo
+    if (model->num_nands == 0) return (Nand){0};
     return model->nands[nand_index % model->num_nands];
 }
 
@@ -113,6 +117,7 @@ Nand model_nands_get(Model *model, size_t nand_index)
 
 void model_nands_set(Model *model, size_t nand_index, size_t input1_index, size_t input2_index, size_t output_index)
 {
+    if (model->num_nands == 0) return;
     Nand new_nand = {
         .input1_index = input1_index % model->arena_size,
         .input2_index = input2_index % model->arena_size,
@@ -238,6 +243,8 @@ void model_compute_ticks(Model *model, int num_ticks)
         }
 
         // Write outputs to arena in reverse Nand order
+        // Heuristic: new nands are added to the end of the list;
+        // uninitialised nands should not override older, working nands
         for (int j = model->num_nands - 1; j >= 0; j--)
         {
             Nand *nand = &model->nands[j];
