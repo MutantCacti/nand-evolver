@@ -13,6 +13,9 @@ static _Atomic uint8_t key_states[KEY_MAX + 1] = {0};
 static int expected_output = 0;
 static struct termios original_termios; // Store original terminal settings
 
+static int key_fds[MAX_INPUT_DEVICES];
+static size_t num_key_fds = 0;
+
 
 void disable_raw_mode(void)
 {
@@ -37,30 +40,106 @@ void enable_raw_mode(void)
 }
 
 
-void* key_listener_thread(void* arg)
+
+size_t find_keyboard_devices(void)
 {
-    const char* input_device = (const char*)arg;
-    int fd = open(input_device, O_RDONLY); // Requires input permissions
-    if (fd == -1) {
-        fprintf(stderr, "read_key_as_word: Error opening input device %s (did you forget sudo?)\n", input_device);
-        exit(1);
+    DIR *dir = opendir(INPUT_DIR);
+    if (!dir) {
+        fprintf(stderr, "find_keyboard_devices: Could not open directory %s\n", INPUT_DIR);
+        return 0;
     }
 
-    struct input_event ev;
+    size_t found = 0;
+    struct dirent *entry;
+
+    while ((entry = readdir(dir)) != NULL && found < MAX_INPUT_DEVICES)
+    {
+        if (strncmp(entry->d_name, "event", 5) != 0) continue;
+
+        char path[INPUT_PATH_MAX_LENGTH];
+        int wrote = snprintf(path, sizeof(path), "%s/%s", INPUT_DIR, entry->d_name);
+        if (wrote < 0 || wrote >= (int)sizeof(path)) continue;
+
+        int fd = open(path, O_RDONLY); // Requires input permissions
+        if (fd == -1) continue;
+
+        unsigned long key_bits[NLONGS(KEY_MAX + 1)] = {0};
+        if (ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(key_bits)), key_bits) < 0) {
+            close(fd);
+            continue;
+        }
+
+        if (!TEST_BIT(KEY_F, key_bits) || !TEST_BIT(KEY_J, key_bits)) {
+            close(fd);
+            continue;
+        }
+
+        char name[256] = "unknown";
+        if (ioctl(fd, EVIOCGNAME(sizeof(name)), name) < 0) {
+            snprintf(name, sizeof(name), "unknown");
+        }
+        //printf("Listening on %s (%s)\n", path, name);
+
+        key_fds[found++] = fd;
+    }
+
+    closedir(dir);
+    return found;
+}
+
+
+void* key_listener_thread(void* arg)
+{
+    (void)arg;
+
+    struct pollfd pfds[MAX_INPUT_DEVICES];
+    for (size_t i = 0; i < num_key_fds; i++) {
+        pfds[i].fd = key_fds[i];
+        pfds[i].events = POLLIN;
+    }
+
     for (;;)
     {
-        ssize_t n = read(fd, &ev, sizeof(ev));
-        if (n == (ssize_t)sizeof(ev)) {
-            if (ev.code > KEY_MAX) continue;
-            if (ev.type == EV_KEY) {
-                if (ev.value == 0) {
-                    key_states[ev.code] = 0;
-                } else if (ev.value == 1) {
-                    key_states[ev.code] = 1;
-                }
+        if (poll(pfds, num_key_fds, -1) < 0) {
+            if (errno == EINTR) continue;
+            fprintf(stderr, "key_listener_thread: poll failed (%s)\n", strerror(errno));
+            return NULL;
+        }
+
+        for (size_t i = 0; i < num_key_fds; i++)
+        {
+            if (pfds[i].fd < 0) continue;
+
+            // A wireless keyboard sleeping or unplugging drops its node
+            // Reconnecting when it wakes up is out of scope
+            if (pfds[i].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+                close(pfds[i].fd);
+                pfds[i].fd = -1;
+                continue;
             }
-        } else if (n < 0) {
-            fprintf(stderr, "read_key_as_word: Error reading input device %s\n", input_device);
+
+            if (!(pfds[i].revents & POLLIN)) continue;
+
+            struct input_event ev;
+            ssize_t n = read(pfds[i].fd, &ev, sizeof(ev));
+            if (n != (ssize_t)sizeof(ev)) {
+                if (n < 0 && errno != EINTR && errno != EAGAIN) {
+                    close(pfds[i].fd);
+                    pfds[i].fd = -1;
+                }
+                continue;
+            }
+
+            if (ev.type != EV_KEY) continue;
+            if (ev.code > KEY_MAX) continue;
+
+            
+            if (ev.value == 0) {
+                key_states[ev.code] = 0;
+            } else if (ev.value == 1) {
+                key_states[ev.code] = 1;
+            }
+            // 2 is autorepeat, we don't care
         }
     }
 }
@@ -76,11 +155,22 @@ word read_key_as_word(int key_code)
 }
 
 
-void test_init_input_listener(char *input_device)
+void test_init_input_listener(void)
 {
+    // Enumerate on the calling thread so failures surface before the frame
+    // loop starts and the terminal is in raw mode
+    num_key_fds = find_keyboard_devices();
+    if (num_key_fds == 0) {
+        fprintf(stderr, "test_init_input_listener: No usable input devices found "
+                        "(see README.md for input permissions)\n");
+        return;
+    }
+
     pthread_t thread_id;
-    if (pthread_create(&thread_id, NULL, key_listener_thread, (void*)input_device) != 0) {
+    if (pthread_create(&thread_id, NULL, key_listener_thread, NULL) != 0) {
         fprintf(stderr, "test_init_input_listener: Failed to initialise key listener thread\n");
+        for (size_t i = 0; i < num_key_fds; i++) close(key_fds[i]);
+        num_key_fds = 0;
         return;
     }
     pthread_detach(thread_id);
@@ -89,8 +179,8 @@ void test_init_input_listener(char *input_device)
 
 void test_write_input(Model *model)
 {
-    int F_key_down = read_key_as_word(33);
-    int J_key_down = read_key_as_word(36);
+    int F_key_down = read_key_as_word(KEY_F);
+    int J_key_down = read_key_as_word(KEY_J);
 
     // Write inputs to bits 0 and 1
     model_arena_set(model, 0, F_key_down);
