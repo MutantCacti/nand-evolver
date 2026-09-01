@@ -48,8 +48,8 @@ int main(void)
     signal(SIGINT, handle_exit_signal);
     signal(SIGTERM, handle_exit_signal);
 
+    test_init_input_listener();
     enable_raw_mode(); // Make terminal input non-echo and non-canonical (line-by-line)
-    test_init_input_listener("/dev/input/event3");
 
     printf("Running at %d TPS\n", 1000000 / TARGET_FRAME_US);
 
@@ -74,6 +74,7 @@ int main(void)
      */
 
     Model *m = model_init(8);
+    if (!m) return 1;
     model_add_nand(m, 0, 0, 3);
     model_add_nand(m, 1, 1, 4);
     model_add_nand(m, 0, 1, 5);
