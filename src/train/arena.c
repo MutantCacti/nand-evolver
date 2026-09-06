@@ -1,6 +1,6 @@
 /*
  * train/arena.c
- * A simple memory arena as an array of words
+ * A simple memory arena as an array of words.
  *
  * Created: 2026-09-06
  *  Author: Maxence Morel Dierckx

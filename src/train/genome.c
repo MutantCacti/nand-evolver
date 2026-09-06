@@ -1,6 +1,6 @@
 /*
  * train/genome.c
- * Interface for mutation of genomes
+ * Interface for mutation of genomes.
  *
  * Created: 2026-09-06
  *  Author: Maxence Morel Dierckx

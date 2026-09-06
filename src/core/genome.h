@@ -1,6 +1,6 @@
 /*
  * core/genome.h
- * Nand and Genome struct definitions
+ * Nand and Genome struct definitions.
  * A genome is a graph of Nands and their communication protocol.
  * This is encoded as a structured address space of wires:
  *
@@ -14,7 +14,7 @@
  *  [1, i+1)        input space     // written at tick 0
  *  i+1             ready wire      // active low
  *  [i+2, m+i+2)    output space    // read when ready
- *  [m+i+2, n+i+1)  internal space  // non-output working memory
+ *  [m+i+2, n+i+2)  internal space  // non-output working memory
  *
  * e.g. 0 01 0 1 010110
  *      ^ ^  ^ ^ ^

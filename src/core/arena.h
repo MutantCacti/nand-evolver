@@ -1,6 +1,6 @@
 /*
  * core/arena.h
- * A simple memory arena as an array of words
+ * A simple memory arena as an array of words.
  *
  * Created: 2026-09-06
  *  Author: Maxence Morel Dierckx
@@ -9,11 +9,10 @@
 #define ARENA_H_
 
 
+#include "word.h"
+
+
 #include <stddef.h>
-#include <stdint.h>
-
-
-typedef uint64_t word;
 
 
 typedef struct
