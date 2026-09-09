@@ -6,7 +6,7 @@
  *
  *  i: number of (reserved) input wires
  *  m: number of output wires
- *  n: number of working wires (output + internal)
+ *  n: total address space
  *
  *  wire(s)         description
  *  ---             ---
@@ -14,7 +14,7 @@
  *  [1, i+1)        input space     // written at tick 0
  *  i+1             ready wire      // active low
  *  [i+2, m+i+2)    output space    // read when ready
- *  [m+i+2, n+i+2)  internal space  // non-output working memory
+ *  [m+i+2, n)      internal space  // non-output working memory
  *
  * e.g. 0 01 0 1 010110
  *      ^ ^  ^ ^ ^
