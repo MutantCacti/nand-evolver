@@ -1,0 +1,70 @@
+# 1C Review of ARCHITECTURE.md
+
+DELTA and THREAD's joint answers to mutant's five questions on `ARCHITECTURE.md` (`f843ea9`).
+Drafted by DELTA, reviewed by THREAD.
+
+**Scope note:** the 1C deliverable is the context annotation appended to `ARCHITECTURE.md`. Several answers below change what that annotation would say (Decoder level, Arena level, where data sits), so we hold the annotation until mutant rules on these.
+
+## Q1. Which comes first, the encoder or the dataset?
+
+- **The raw data comes first; the Encoder consumes it.** Both are **Experiment-scoped**: the encoded array depends only on (data, encoder params), which are identical across an experiment's replicates. Only the **order** varies per Run. So `Run (Dataset, Rng)` is misplaced: Run owns the Rng and therefore the order, not the data.
+- **Labels are encoded at the same time**, by the Decoder's `encode_target`. A dataset becomes a list of examples, each a list of encoded rounds (input bits, optional expected bits).
+- **Once encoded, everything below is task-agnostic.** The Encoder (and `encode_target`) are the only components that ever see the world.
+- **The Encoder should not batch.** Packing 64 examples into words is layout, an execution variation (lane vs packed). Encoding is protocol (world → wire bits for one example). An encoder that batched would need a different encoder for the packed infer path. Batching is the lane implementation's job at the Individual → Example boundary.
+- **Naming question:** what deserves the short name is the encoded array that flows down and is read in the hot loops. Proposal: **Source** (raw, task-specific) → Encoder → **Dataset** (encoded, task-agnostic).
+
+## Q2. Which components loop, and which are called by loops?
+
+**Every level in the tree is a loop**, and by "one level per function" each needs a named driver. The diagram names components but not the drivers, and the drivers are what become files and functions in 2A. The parenthesised names are of three kinds:
+
+1. **data** owned at the level
+2. **components called** at a point in the level's loop
+3. one level whose loop body *is* the component (Kernel)
+
+| Level | Loops over | Data (allocated / reset / written) | Called at this level |
+|---|---|---|---|
+| Experiment | stages, then Runs (replicates) | Source, encoded Dataset (once) | Encoder + `encode_target` (once, before the loop) |
+| Run | Generations | Rng (seed) → order | — |
+| Generation | Individuals | population records | **after** the loop: Selector once, Mutator per child |
+| Individual | Examples | Genome; Arena **allocated** here (or per worker) | **between** examples: Trainer (individual mode) |
+| Example | Rounds | Arena **reset** here; per-round output bits | **after** graded rounds: Decoder (attribution) + Verifier (error) |
+| Round | Ticks | — | before: write inputs. Loop until ready or `max_ticks`. After: latch outputs |
+| Tick | Instructions | Arena **written** here | writeback (seniority), ready check |
+| Instruction | — | reads Genome + Arena | Kernel (the NAND) |
+
+- **Two kinds of component.** *Variers* act per iteration and vary the level below (Selector, Mutator, Trainer, Kernel). *Establishers* run once and set up the level below (the Encoder, Dataset loading). mutant's labelling rule ("each component varies the loop underneath") holds for variers only. The Encoder varies nothing, which is why its placement looked odd.
+- **The Kernel and the Instruction loop.** `tick()` owns the loop and `kernel()` is the body. Whether an implementation fuses them into one vectorised pass is an **execution** concern, invisible to the structure. That's "SIMD without being designed for it" in its cleanest test case.
+- **Arena is three levels for one buffer** (data rule 3): allocated at Individual, reset at Example, written at Tick. Placing it at Tick misstates its lifetime. Placing it at Example, read literally, implies allocating once per example.
+- **Genome:** owned at Individual, written by the Mutator (Generation) and the Trainer (Individual), read at Instruction.
+
+## Q3. Decoder at the end of each round, or at the example?
+
+**At the Example.** If the Decoder sits at the round boundary, the Round must know the grading schedule, which is the leak you flagged.
+
+- **Round** owns only the handshake: write inputs, tick until ready or `max_ticks`, latch output bits, return them upward. It is ignorant of grading.
+- **Example** owns the schedule (Settled: the example declares its graded rounds). After its rounds it calls the Decoder (attribution) and Verifier (error) on graded rounds only. The cost is R × output words held per example (Sequential MNIST: 28).
+- **Infer differs only in the caller:** the world consumes every round's output, so infer decodes every round. Same component.
+- **Decoder vs Verifier stay separate.** The Decoder is protocol: pinned in the model file, linked into `infer`. The Verifier is task: train-only, scores against labels.
+
+## Q4. What do you call the component(s) that dispatch experiments?
+
+- **Driver:** executes one experiment file's stages (build train → Runs → build infer → infer → report). Already the term in DECISIONS.
+- **Study:** a set of experiment files, i.e. one target figure. A Study loops over Experiments. We avoid *workbench*, which is mutant's word for the codebase.
+
+## Q5. Problems in the diagram, or the structure it reveals
+
+1. **Experiment is a pipeline, not just a loop over Runs.** Stages: build train → Runs → build infer → infer → report. The tree shows only train. Either label it the train tree or add the infer branch. Without that, the Encoder/Decoder read as training-only concerns, which is backwards: they are protocol and are linked into `infer`.
+2. **Nouns and verbs are mixed in the parentheses** (Q2), and Arena is at the wrong level.
+3. **Selector is fed directly by Verifier, skipping the Individual reduction.** Results move up one level, so per-example results reduce at Individual into the record the Selector reads.
+   - The record also carries the cost terms, which don't come from the Verifier: ticks come from Round/Tick, live gates from the Genome.
+   - None of those arrows exist.
+4. **Dataset's arrow lands in the Tick box.** Inputs are written once per **Round** (handshake). The expected bits must reach the Verifier, and there's no arrow for that.
+5. **Rng only feeds Dataset.** The Mutator, Selector (tournament) and Trainer all draw randomness, from streams derived from (seed, level indices) at the draw site.
+6. **Trainer evidence comes only from Verifier.** Settled also gives it the Decoder's per-bit attribution (and, later, per-Nand stats from the Kernel).
+7. **Ready isn't shown.** The Round's loop condition reads the ready wire in the Arena (protocol).
+8. **The declared parallel/serial partition isn't shown.** Annotating each level per mode (P1: Ticks and Generations serial; individual mode: Examples serial too) would make the partition visible where the work-splitter needs it.
+9. "Examples (Verifier)" should be singular, like the other levels.
+
+## THREAD
+
+<!-- THREAD appends review notes here -->
