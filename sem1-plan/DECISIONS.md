@@ -77,14 +77,18 @@ Drafted by DELTA and THREAD. Full text of earlier rounds is in git history (roun
 | — | THREAD: "binaries must not accept a descriptor path" | **Rejected.** Discipline can't be eliminated, only made the responsibility of code rather than the user. Binaries **may** accept experiment files directly. That flexibility is contained behind the interface and may help unexpectedly, especially for agents. |
 | — | THREAD: report carries the world axes | **Accepted.** |
 
+THREAD's restatement (round 4): **one authority, not one capability.** In the experiment path, only the driver reads the experiment file. That path carries the reproducibility guarantee; hand invocations sit outside it, and the hash check contains them.
+
 ## Settled (round 3 additions)
 
-- **Encoder and Decoder** are separate protocol components shared by train and infer, and many encoders may share a decoder. A task selects them and their params. The exported model is the genome plus the encoder and decoder ids and params. Input encoding params (e.g. MNIST threshold levels) fix `num_inputs`.
+- **Encoder and Decoder** are separate protocol components shared by train and infer, and many encoders may share a decoder. A task selects them and their params. The exported model pins the genome plus **both** ids and params (the pairing).
+  - **Encoder:** world input → input wires. It has no inverse (nothing ever decodes an input). Its params fix `num_inputs` (e.g. MNIST threshold levels).
+  - **Decoder:** owns both output directions, `encode_target(label) → expected bits` and `decode(bits) → value`, plus attribution (below). Its params fix `num_outputs`. That pair is the only true inverse, so the round-trip test `decode(encode_target(v)) == v` targets the **Decoder alone**.
 - **The decoder side owns error attribution.** It gives each output bit its significance, a discrete gradient at the output boundary that the Trainer and Mutator use as evidence. Each scheme declares its kind:
   - **bit-attributable:** `out ^ expected` alone gives which bits are wrong and which way to move (one-hot, thermometer). Stays in bit space, lane-parallel.
   - **value-attributable:** fixes aren't bit-local (binary, Gray, float). Decodes per lane at the output boundary, once per round, never per tick.
 - **Call levels:** in train, inputs and labels are encoded once at load. Attribution runs per round at the output boundary. In infer, encoding and decoding run per round. The kernel never touches either.
-- **Shared declaration, two implementations:** like the kernel, each scheme has a lane and a packed implementation. The shared artifact is the declaration (scheme, params, significance, kind), carried by the model file and pinned by a lane-vs-packed differential test that covers the whole I/O path.
+- **Shared declarations, two implementations each:** like the kernel, the Encoder and the Decoder each have a lane and a packed implementation. The shared artifacts are two declarations (scheme, params; plus significance and kind for the Decoder), carried by the model file and pinned by a lane-vs-packed differential test over the whole I/O path. They have different hot-path status: the Encoder's lane form runs once at load, the Decoder's at every round boundary.
 - **Driver:** a thin Python driver is the experiment's entry point. Its stages are keyed by their inputs:
   1. compile train
   2. execute train (writes the model file + series)
