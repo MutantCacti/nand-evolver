@@ -44,8 +44,9 @@ The flattened (genome, batch) split ^& assumes Examples are parallel. Individual
 **Rec: A.** It preserves both documented invariants (adding a gate is neutral, README canonicalisation). B is more expressive but makes adds conditionally destructive and needs a clock-aware canonicaliser.
 
 ### 4. Arena persistence, shuffle, offspring arena
-- **4a.** **A.** One flag on the dataset declaration controls both: `sequential` = arena persists across examples and no shuffle; `iid` = arena zeroed per example and shuffled. **B.** Two independent flags.
-  **Rec: A.** Out-of-sync settings fail silently: a persistent arena plus shuffling makes fitness depend on the permutation.
+- **4a.** There are **three** arena boundaries, not one: **rows within an example** (must persist — that is what the handshake *is*), **examples within a lifetime** (the real question here), and **offspring** (4b).
+  **A.** One flag on the dataset declaration: `iid` = single-row examples, arena zeroed per example, shuffled; `sequential` = multi-row examples, arena persists across rows, zeroed between examples, not shuffled. **B.** Two independent flags (persistence, shuffle).
+  **Rec: A**, with the row boundary outside the flag because it is definitional rather than chosen. Out-of-sync settings fail silently: a persistent arena plus shuffling makes fitness depend on the permutation. P3 streaming would later add a third value that also persists *across* examples; it is not a fourth boundary.
 - **4b.** Offspring arena: **A.** blank (Baldwinian). **B.** copy the parent's (Lamarckian).
   **Rec: A.** It's moot under iid. In lane layout "the parent's arena" is 64 arenas, so copying isn't well defined.
 
@@ -54,6 +55,12 @@ The flattened (genome, batch) split ^& assumes Examples are parallel. Individual
 - **B.** One `task.h` per dataset covering both access and scoring.
 
 **Rec: A.** It's mutant's own split (batching is preparation, the task is scoring). `error_max` normalises across tasks and short final batches.
+
+**An example is not always one row.** Under `sequential` one example is a *row sequence with a
+single label* (Sequential MNIST: 28 rows, one digit), so the accessor must yield a length, not
+just a row, and **scoring happens at the end of a sequence, not per row**. Note the Settled
+advance mask already presumes multi-row examples — lanes due their next row — so the accessor
+has to supply them. For `iid` the length is 1 and nothing changes.
 
 ### 6. Grading defaults and the tick budget
 - **6a.** The default output encoding is keyed to the output's measurement scale. The task author picks; these are the library defaults:
@@ -89,4 +96,54 @@ Needed for delta-error / lifetime-error experiments (P2).
 
 ## THREAD
 
-<!-- THREAD appends review notes here -->
+Reviewed, agreed with everything above. MNIST-is-nominal correction accepted — my slip, my own
+taxonomy contradicted itself. Two direct edits, three additions to Settled, one new item, one note.
+
+### Direct edits made
+
+- **4a, rewritten.** It named one boundary where there are three. Rows-within-an-example must
+  persist (that is the handshake), examples-within-a-lifetime is the actual question, offspring
+  is 4b. Options unchanged; the recommendation now excludes the row boundary as definitional.
+- **5, extended.** The accessor had no notion of a multi-row example, but the Settled advance
+  mask already presumes one. Added: under `sequential` an example is a row sequence with a
+  single label, so the accessor must yield a length and scoring happens at end-of-sequence.
+
+### Additions to "Settled in 1A"
+
+- **`score()` measures correctness only.** Cost terms — ticks, live gates, address space — travel
+  up in the Trial/Measurement record and are weighted at the **Selector**, never folded into
+  `error`. This follows from "never collapse to a scalar below selection": cost weights anneal,
+  so they cannot be baked in below the level that anneals them.
+- **Cost terms price *live* gates, not *present* gates.** Interaction between items 3 and 8:
+  hold-and-ignore means a large fraction of gates are inert **by design**, so a size penalty on
+  present gates would delete the neutral-drift reservoir that 3A exists to protect. Measurement
+  needs both counts under distinct names, and only the live one may carry a cost weight.
+- **The declared partition (item 2) is testable, and the test is determinism under thread
+  count:** same seed, 1 thread vs N threads, bit-identical results. One assertion covers three
+  invariants at once — declared-parallel levels have no hidden dependency, no shared RNG, and the
+  example source is indexed rather than walked. Hand it to DESTUB at 2C.
+
+### 10. The CLI half of Goal 2: what happens when the two axes disagree?
+
+Item 1 settles the build axis (`-D` structure) and the runtime axis (JSON scalars). Neither
+covers their **interaction**, which is where P2 comparison work will actually break: a config
+naming a variant the binary wasn't compiled with.
+
+- **A.** The binary reports its compiled-in variant set (`nande-train --caps`), a config naming
+  an absent variant **fails loudly at Run**, and the build identity (the `-D` set) is embedded
+  in the binary and emitted with every run alongside the runtime config.
+- **B.** Silent fallback to the compiled default, with a warning.
+- **C.** No introspection; the build matrix is tracked outside the program, in the Makefile and
+  run logs.
+
+**Rec: A.** Jefferson's "compare stepped improvements" ^& requires every result to be
+attributable to a `(build identity, runtime config)` pair. A silent fallback makes a build-matrix
+comparison quietly meaningless rather than loudly broken, which is the worst available failure
+mode for the one thing the project is graded on.
+
+### Note, not a decision: the stop condition
+
+Run owns it, and it is the only piece of Run-level state nobody has specified. Recommend a
+generations cap plus optional early stop on zero error, **computed at Generations and reduced to
+the single bit that reaches Run** — otherwise Run needs the score vector and starts doing
+selection, which is the exact mislabelling mutant caught when deriving the hierarchy.
