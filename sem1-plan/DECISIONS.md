@@ -1,7 +1,7 @@
 # SYN 1B: Decisions
 
 Priority-ordered A/B decisions for `mutant`. `^&` marks a constraint from Prof. Jefferson.
-Drafted by DELTA and THREAD. Full text of earlier rounds is in git history (round 1 `43c6dea`, round 2 `6d72d4e`).
+Drafted by DELTA and THREAD. Full text of earlier rounds is in git history (round 1 `43c6dea`, round 2 `6d72d4e`, round 3 `0aa4c47`).
 
 ## Round 1 rulings (mutant, 2026-10-04)
 
@@ -65,168 +65,33 @@ Drafted by DELTA and THREAD. Full text of earlier rounds is in git history (roun
 - **A component lives at the level where its inputs are scoped** (THREAD).
 - **Evolver vs Selector + Mutator:** which factoring survives implementation (mutant).
 
-## Round 3: open items
+- **Many encoders share a decoder** (e.g. binary classification) (mutant).
 
-### 1. Codec (input/output encoding)
-mutant: *"Consider encoder/decoder as two separate or one new component shared between train and run. Compilation of a usable model binary then becomes installation of a network's data into the corresponding encoder/decoder."*
+## Round 3 rulings (mutant, 2026-10-04)
 
-- **The Codec is a protocol component, and it splits the old Task.** The Codec maps between world and wires: `encode(input) → input bits`, `encode_target(label) → expected output bits`, `decode(output bits) → value`. A task **selects** a codec (plus codec params). The Task keeps the dataset and the scorer.
-- **Codec params are protocol.** MNIST's k threshold levels per pixel set `num_inputs`. The exported model is therefore (genome, codec id, codec params).
-- ~~Training never decodes.~~ **Retracted** (mutant, 17:30): a Trainer can't backpropagate without knowing which output bits matter. For a float, a sign or exponent bit outweighs a mantissa LSB. Revised:
-  - **The Codec owns error attribution as well as encoding.** Besides `encode_target`, it gives each output bit its **significance**: how much the decoded error changes if that bit flips (a discrete gradient at the output boundary). That is the first step of any backward search, and the Trainer and Mutator consume it as evidence.
-  - **Separable codecs** (one-hot, thermometer; Gray only approximately): significance is a constant per bit, so scoring and attribution stay in bit space and lane-parallel.
-  - **Non-separable codecs** (binary integers, floats): significance depends on the value (a float mantissa bit's weight depends on its exponent). They must decode per lane, transposing out of lane form at roughly a lane-width cost. That cost is paid at the output boundary only, once per round, not per tick.
-  - The codec **declares** which kind it is, so the cost is visible in the experiment file rather than discovered.
-- **Same code, different call levels.** In train, **encoding** runs once, at Run: the whole dataset and its labels are encoded to bit form at load (the inputs are dataset-scoped). **Attribution** runs at the output boundary of each round (the inputs are round-scoped). In run/, encode and decode run per round. The kernel's hot loops never touch the codec.
-- **Installation:** run binary = codec (front and back) + packed kernel + embedded genome blob.
+| # | Topic | Ruling |
+|---|---|---|
+| 1 | Codec | **B.** Encoder and Decoder are separate components. Hypothesis: many encoders may share a decoder. |
+| 2 | Scripting interface | **A.** One Python driver. It enables resumable runs, sweeps that skip to the train-execution stage, and automated multi-run pipelines (e.g. for new datasets). |
+| 3 | Terminology | **A.** *experiment*, *experiment file*, **Run** (hierarchy level), `infer/` (inference binary). The codebase is an experimental **workbench**. |
+| — | THREAD: "binaries must not accept a descriptor path" | **Rejected.** Discipline can't be eliminated, only made the responsibility of code rather than the user. Binaries **may** accept experiment files directly. That flexibility is contained behind the interface and may help unexpectedly, especially for agents. |
+| — | THREAD: report carries the world axes | **Accepted.** |
 
-Options:
-- **A.** One Codec component, two directions. Encode and decode in one file make inverse consistency a local, testable property (`decode(encode_target(v)) == v`).
-- **B.** Separate Encoder and Decoder components (independently swappable, e.g. a thermometer input with one-hot output).
+## Settled (round 3 additions)
 
-**Rec: A**, with input and output codecs selected independently inside it, so B's flexibility comes back as two parameters rather than two components.
+- **Encoder and Decoder** are separate protocol components shared by train and infer, and many encoders may share a decoder. A task selects them and their params. The exported model is the genome plus the encoder and decoder ids and params. Input encoding params (e.g. MNIST threshold levels) fix `num_inputs`.
+- **The decoder side owns error attribution.** It gives each output bit its significance, a discrete gradient at the output boundary that the Trainer and Mutator use as evidence. Each scheme declares its kind:
+  - **bit-attributable:** `out ^ expected` alone gives which bits are wrong and which way to move (one-hot, thermometer). Stays in bit space, lane-parallel.
+  - **value-attributable:** fixes aren't bit-local (binary, Gray, float). Decodes per lane at the output boundary, once per round, never per tick.
+- **Call levels:** in train, inputs and labels are encoded once at load. Attribution runs per round at the output boundary. In infer, encoding and decoding run per round. The kernel never touches either.
+- **Shared declaration, two implementations:** like the kernel, each scheme has a lane and a packed implementation. The shared artifact is the declaration (scheme, params, significance, kind), carried by the model file and pinned by a lane-vs-packed differential test that covers the whole I/O path.
+- **Driver:** a thin Python driver is the experiment's entry point. Its stages are keyed by their inputs:
+  1. compile train
+  2. execute train (writes the model file + series)
+  3. compile infer (genome installed into encoder/decoder)
+  4. execute infer + perf/energy
+  5. report
 
-### 2. Scripting interface (the driver)
-
-mutant: *"If a top-level descriptor file uniquely identifies a build and its runtime parameters,
-then both the build and run must take in the same descriptor, so the discipline issue is not
-resolved."*
-
-**Conceded — round 2's item 4 claim was too strong.** Config-above-build removes the
-compile-vs-runtime mismatch and replaces it with a descriptor-vs-descriptor mismatch: two
-invocations each naming a file, free to name different files. The hash check catches that, but
-catching is discipline, not construction.
-
-The resolution is mutant's own next sentence. If a pipeline is *compile (train) → execute (train)
-→ compile (run) → report*, those are **stages of one invocation**, not separate invocations. So:
-
-> **Invariant: the descriptor crosses the human boundary exactly once.** Every later consumer
-> receives it from the driver, never from a person.
-
-Which makes the binaries' interface a consequence rather than a choice: **the C binaries must not
-accept a descriptor path at all**, only the trivial payload the driver derives (DELTA's key=value
-form — C never parses the descriptor format). There is then no second place to type a filename.
-The embedded hash check stays, but as defence in depth for hand-invocation during development,
-not as the mechanism. **Test of any proposed interface: count the places a human can name a
-descriptor. More than one and discipline is back.**
-
-**Stages, keyed by their inputs** — this is the mechanism that makes ruling 4B pay off:
-
-| # | Stage | Keyed by | Required? |
-|---|---|---|---|
-| 1 | compile (train) | hash(protocol + algorithm subtree, commit) | yes |
-| 2 | execute (train) → model file + series | hash(1, parameter subtree, seed) | yes |
-| 3 | compile (infer), genome installed into the codec | hash(2, codec id + params) | only with a deployment target |
-| 4 | execute (infer) + perf/energy measurement | hash(3, held-out set) | only with a deployment target |
-| 5 | report | hash(2, 4) | yes |
-
-Content-addressing each stage means a hyperparameter sweep re-runs **stage 2 only**, reusing one
-stage-1 binary across every point. **Stages 3–4 are conditional:** a training comparison needs
-1, 2 and 5, so a descriptor with no deployment target should stop after stage 2 rather than build
-an inference binary nobody loads. The driver should not be written assuming a fixed stage count.
-
-**The report must identify what computed it, not only what was computed.** The descriptor fixes
-the behavioural tree, but the **world axes are not in it** — and item 2 ruled that execution
-variations change time and never results. The target figure's x-axis *is* time. So thread count,
-machine, lane width, compiler and flags must be logged explicitly alongside the descriptor and
-commit; otherwise two lines drawn from runs on different thread counts are silently
-incomparable, in exactly the way the execution category exists to prevent. Descriptor = what was
-computed. Report = what computed it. A point on the graph needs both.
-
-Layout `runs/<descriptor-hash>/<seed>/`, with the descriptor and commit copied in.
-
-Driver language:
-- **A.** Python, thin. It already has to hash, drive Make, and plot — and plotting is Python
-  regardless. mlql precedent.
-- **B.** Make only.
-- **C.** Shell.
-
-**Rec: A.** The decisive point is that **the driver is never shipped**: it is a development tool,
-so its language has no bearing on the MCU deployment target, which is the only place the
-toolchain is constrained. B cannot reasonably express replicate loops, hashing and reporting; C
-can, but badly.
-
-### 3. Terminology: "run" now means three things
-The top hierarchy level (**Run**), the inference binary (`run/`), and mutant's pipeline ("a run"). mutant also asked for a term for the descriptor.
-
-- **A.**
-  - *experiment* = the descriptor and its pipeline (one line on the figure, many replicates)
-  - *experiment file* = the descriptor
-  - **Run** stays the hierarchy level (one training execution, one seed)
-  - the inference binary is renamed `infer/`
-- **B.** Keep "run" for the pipeline. Rename the hierarchy level (e.g. **Session**) and the binary (`infer/`).
-
-**Rec: A.** "Experiment" is what the target figure plots. Avoid *trial* (taken at Examples).
-
-## THREAD
-
-Round 3 review. Item 2 written above. Agreed with items 1 and 3; DELTA's terminology catch is
-better than mine (I'd only found two collisions on "run", not three). Three additions, one small
-amendment, no edits to DELTA's items.
-
-### Item 1 (Codec): agreed, Rec A, with two consequences
-
-- **The Codec must live in `core/`.** It is shared by train and infer *by definition* — that is
-  what makes encoding a protocol variation — so it cannot sit in either. That gives a concrete
-  Phase 2A consequence: the inference binary is **kernel + codec + genome blob**, three parts, of
-  which only the codec is task-specific. The kernel stays task-agnostic, which is the property
-  worth protecting.
-- **On the retraction** (mutant 17:30, DELTA's revision): agreed, and it *strengthens* the `core/`
-  placement rather than complicating it. With attribution running at each round's output boundary,
-  the codec is active in train's inner loops, not merely in reports — so it is unambiguously
-  shared code, not a run-only concern.
-- **But the separability criterion is misstated, and it misclassifies binary.** "Constant per-bit
-  significance" doesn't separate the cheap cases from the expensive ones:
-  - Plain binary integers *do* have constant per-bit significance — flipping bit `k` always
-    changes the value by exactly `2^k`. By the stated criterion binary is separable, which
-    contradicts its listing.
-  - Gray is *not* approximately separable, it's firmly non-separable: flipping Gray bit `k` flips
-    decoded bits `0..k`, so the numeric change depends on the current value (3-bit Gray, flip the
-    MSB: `0→7` is +7, `1→6` is +5).
-
-  The property that actually matters is **whether attribution is computable in bit space from
-  `out ^ expected` alone**:
-  - **one-hot, thermometer** — yes. The XOR gives both which bits are wrong and which way to move,
-    so attribution stays lane-parallel with no decode.
-  - **binary, Gray, float** — no. A wrong high bit and wrong low bits can't be fixed
-    independently, so the fix direction isn't bit-local even when the magnitude is constant.
-    These need the decoded value, hence the per-lane transpose.
-
-  Same groupings as DELTA's, but the criterion has to be stated this way or binary reads as cheap
-  when it isn't. Suggest the codec's declared kind be named for this — *bit-attributable* vs
-  *value-attributable* — since that is what the cost follows from.
-- **"One component shared between train and run" holds for the scheme, not the implementation.**
-  The codec faces the same lane-vs-packed duality as the kernel: in train it operates on
-  lane-packed words, in infer on bit-packed ones. So expect a lane codec and a packed codec,
-  mirroring the two kernels, with the **shared artifact being the declaration** — scheme, params,
-  significance table, attributability kind. That declaration is what the model file carries, and
-  what the differential test pins.
-- **Two tests for DESTUB at 2C**, extending DELTA's round-trip: (i) `decode(encode_target(v)) == v`
-  across the task domain, and (ii) **the same codec object linked into both binaries**, which
-  stretches the existing lane-vs-packed differential test from the kernel to the whole I/O path.
-  A deployed genome being uninterpretable is precisely a codec mismatch, so it deserves a test
-  rather than a convention.
-
-### Item 3 (Terminology): agreed, Rec A, one amendment
-
-Accept *experiment* for the concept, **Run** staying as the hierarchy level, and `infer/` for the
-inference binary. Small amendment: call the file a **manifest** rather than an *experiment file*.
-One word, no collision, and it will appear constantly in prose and in code
-(`load_manifest` reads better than `load_experiment_file`). "Experiment" then names the thing and
-"manifest" names its definition, rather than one word doing both jobs.
-
-Minor knock-on worth noting: renaming `run/` → `infer/` is also a documentation change —
-`core/word.h`'s header comment already describes the two word semantics in terms of `run/` doing
-bit-packed inference.
-
-### For mutant
-
-Two things in item 2 I'd most like checked, since both change what gets built rather than what
-it's called:
-
-1. **The binaries must not accept a descriptor path at all.** That's the structural form of your
-   discipline objection, and it means the C side's config interface is a driver-emitted payload,
-   never the manifest. Cheap now, awkward to retrofit.
-2. **The report has to carry the world axes** (thread count, machine, lane width, compiler
-   flags). They are deliberately outside the manifest, since they aren't model behaviour — but
-   the figure's x-axis is time, so without them two lines aren't comparable.
+  Stages 3–4 run only with a deployment target. A sweep re-runs stage 2 only. Binaries may also take an experiment file directly; the embedded hash check refuses mismatches.
+- **Reports** carry the world axes (thread count, machine, lane width, compiler and flags) next to the experiment file and commit. The experiment file is what was computed; the report is what computed it. Layout: `runs/<hash>/<seed>/`.
+- **Vocabulary:** *experiment*, *experiment file*, **Run** (hierarchy level), `infer/` (binary; `run/` is retired), *workbench*.
