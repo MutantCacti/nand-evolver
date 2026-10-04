@@ -87,7 +87,64 @@ Options:
 **Rec: A**, with input and output codecs selected independently inside it, so B's flexibility comes back as two parameters rather than two components.
 
 ### 2. Scripting interface (the driver)
-*THREAD to write. mutant: both build and run consume the descriptor, so discipline isn't solved yet. A "run" = compile train → execute train (writes a model file) → compile run with that file → report, logged. DELTA's lean: one driver is the **only** entry point; binaries embed their hash and refuse a mismatch; Python driver, with C reading only a trivial key=value form it emits; layout `runs/<hash>/<seed>/` with descriptor + commit; run/ measured with rotateai-simulator-style perf/energy for DOER objective 3.*
+
+mutant: *"If a top-level descriptor file uniquely identifies a build and its runtime parameters,
+then both the build and run must take in the same descriptor, so the discipline issue is not
+resolved."*
+
+**Conceded — round 2's item 4 claim was too strong.** Config-above-build removes the
+compile-vs-runtime mismatch and replaces it with a descriptor-vs-descriptor mismatch: two
+invocations each naming a file, free to name different files. The hash check catches that, but
+catching is discipline, not construction.
+
+The resolution is mutant's own next sentence. If a pipeline is *compile (train) → execute (train)
+→ compile (run) → report*, those are **stages of one invocation**, not separate invocations. So:
+
+> **Invariant: the descriptor crosses the human boundary exactly once.** Every later consumer
+> receives it from the driver, never from a person.
+
+Which makes the binaries' interface a consequence rather than a choice: **the C binaries must not
+accept a descriptor path at all**, only the trivial payload the driver derives (DELTA's key=value
+form — C never parses the descriptor format). There is then no second place to type a filename.
+The embedded hash check stays, but as defence in depth for hand-invocation during development,
+not as the mechanism. **Test of any proposed interface: count the places a human can name a
+descriptor. More than one and discipline is back.**
+
+**Stages, keyed by their inputs** — this is the mechanism that makes ruling 4B pay off:
+
+| # | Stage | Keyed by | Required? |
+|---|---|---|---|
+| 1 | compile (train) | hash(protocol + algorithm subtree, commit) | yes |
+| 2 | execute (train) → model file + series | hash(1, parameter subtree, seed) | yes |
+| 3 | compile (infer), genome installed into the codec | hash(2, codec id + params) | only with a deployment target |
+| 4 | execute (infer) + perf/energy measurement | hash(3, held-out set) | only with a deployment target |
+| 5 | report | hash(2, 4) | yes |
+
+Content-addressing each stage means a hyperparameter sweep re-runs **stage 2 only**, reusing one
+stage-1 binary across every point. **Stages 3–4 are conditional:** a training comparison needs
+1, 2 and 5, so a descriptor with no deployment target should stop after stage 2 rather than build
+an inference binary nobody loads. The driver should not be written assuming a fixed stage count.
+
+**The report must identify what computed it, not only what was computed.** The descriptor fixes
+the behavioural tree, but the **world axes are not in it** — and item 2 ruled that execution
+variations change time and never results. The target figure's x-axis *is* time. So thread count,
+machine, lane width, compiler and flags must be logged explicitly alongside the descriptor and
+commit; otherwise two lines drawn from runs on different thread counts are silently
+incomparable, in exactly the way the execution category exists to prevent. Descriptor = what was
+computed. Report = what computed it. A point on the graph needs both.
+
+Layout `runs/<descriptor-hash>/<seed>/`, with the descriptor and commit copied in.
+
+Driver language:
+- **A.** Python, thin. It already has to hash, drive Make, and plot — and plotting is Python
+  regardless. mlql precedent.
+- **B.** Make only.
+- **C.** Shell.
+
+**Rec: A.** The decisive point is that **the driver is never shipped**: it is a development tool,
+so its language has no bearing on the MCU deployment target, which is the only place the
+toolchain is constrained. B cannot reasonably express replicate loops, hashing and reporting; C
+can, but badly.
 
 ### 3. Terminology: "run" now means three things
 The top hierarchy level (**Run**), the inference binary (`run/`), and mutant's pipeline ("a run"). mutant also asked for a term for the descriptor.
@@ -102,3 +159,47 @@ The top hierarchy level (**Run**), the inference binary (`run/`), and mutant's p
 **Rec: A.** "Experiment" is what the target figure plots. Avoid *trial* (taken at Examples).
 
 ## THREAD
+
+Round 3 review. Item 2 written above. Agreed with items 1 and 3; DELTA's terminology catch is
+better than mine (I'd only found two collisions on "run", not three). Three additions, one small
+amendment, no edits to DELTA's items.
+
+### Item 1 (Codec): agreed, Rec A, with two consequences
+
+- **The Codec must live in `core/`.** It is shared by train and infer *by definition* — that is
+  what makes encoding a protocol variation — so it cannot sit in either. That gives a concrete
+  Phase 2A consequence: the inference binary is **kernel + codec + genome blob**, three parts, of
+  which only the codec is task-specific. The kernel stays task-agnostic, which is the property
+  worth protecting.
+- **Sharpening "training never decodes":** correct for the hot path, but reports decode. So
+  `decode` is absent from Examples-and-below, not from the train binary — which means the codec is
+  linked into *both* binaries anyway, reinforcing the `core/` placement.
+- **Two tests for DESTUB at 2C**, extending DELTA's round-trip: (i) `decode(encode_target(v)) == v`
+  across the task domain, and (ii) **the same codec object linked into both binaries**, which
+  stretches the existing lane-vs-packed differential test from the kernel to the whole I/O path.
+  A deployed genome being uninterpretable is precisely a codec mismatch, so it deserves a test
+  rather than a convention.
+
+### Item 3 (Terminology): agreed, Rec A, one amendment
+
+Accept *experiment* for the concept, **Run** staying as the hierarchy level, and `infer/` for the
+inference binary. Small amendment: call the file a **manifest** rather than an *experiment file*.
+One word, no collision, and it will appear constantly in prose and in code
+(`load_manifest` reads better than `load_experiment_file`). "Experiment" then names the thing and
+"manifest" names its definition, rather than one word doing both jobs.
+
+Minor knock-on worth noting: renaming `run/` → `infer/` is also a documentation change —
+`core/word.h`'s header comment already describes the two word semantics in terms of `run/` doing
+bit-packed inference.
+
+### For mutant
+
+Two things in item 2 I'd most like checked, since both change what gets built rather than what
+it's called:
+
+1. **The binaries must not accept a descriptor path at all.** That's the structural form of your
+   discipline objection, and it means the C side's config interface is a driver-emitted payload,
+   never the manifest. Cheap now, awkward to retrofit.
+2. **The report has to carry the world axes** (thread count, machine, lane width, compiler
+   flags). They are deliberately outside the manifest, since they aren't model behaviour — but
+   the figure's x-axis is time, so without them two lines aren't comparable.
