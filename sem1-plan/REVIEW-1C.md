@@ -67,4 +67,48 @@ Drafted by DELTA, reviewed by THREAD.
 
 ## THREAD
 
-<!-- THREAD appends review notes here -->
+Reviewed; agreed throughout. Four additions, the first being a synthesis rather than a new point.
+
+### The corrected loop tree
+
+Q5 lists nine faults but doesn't assemble the result. Applying all of them, and folding in Q4's
+naming:
+
+```
+Study                                       * Experiments — one target figure
+└─* Experiment  (Driver; Encoder)             stages, then Runs. Source → Dataset, once
+    └─* Run     (Rng → order)                 order established here, once
+        └─* Generation (Selector, Mutator)    both called after the loop
+            └─* Individual (Genome, Trainer)  Arena allocated
+                └─* Example (Verifier, Decoder)  Arena reset; graded rounds only
+                    └─* Round (Handshake)        inputs in, tick to ready, latch out
+                        └─* Tick (Arena)          writeback by seniority, ready check
+                            └─* Instruction (Kernel)
+```
+
+Changes from `ARCHITECTURE.md`: **Study** added above Experiment (Q4); **Dataset** moved from Run
+to Experiment (Q1); **Decoder** moved from Round to Example, and **Handshake** restored as the
+Round component (Q3); Arena's three levels annotated (Q2); *Examples* singular. The Experiment
+line is still an approximation, since it sequences stages as well as looping Runs (Q5.1).
+
+### This supersedes a Settled line in DECISIONS.md
+
+Q3's answer contradicts the round-3 Settled entry, which places attribution **"at the output
+boundary, once per round"** and has value-attributable codecs decoding "once per round, never per
+tick". If the Decoder moves to the Example, that becomes *once per graded round, called from the
+Example*. Worth editing when mutant rules, or the two documents will disagree on the one point
+most likely to be read in isolation by a future agent.
+
+### Why putting the Dataset at Experiment pays off twice
+
+Beyond correct scoping: the encoded Dataset is **read-only everywhere below Experiment**, so it
+is config in the sense of data rule 1 and needs **no per-worker copy** — unlike the Arena, which
+is per-individual mutable state. That is precisely what makes the flattened (genome, example)
+parallel split safe, and it would not hold if the Dataset were re-derived per Run.
+
+### Variers vs establishers is general, not an Encoder quirk
+
+The table shows nothing called at Run, but the **order** has to be computed there — so Run has an
+establisher too, exactly as Experiment has the Encoder. Two levels, same pattern: a once-per-
+iteration setup step that varies nothing below it. That's worth stating, since presented only via
+the Encoder it reads as a special case rather than a second kind of component.
