@@ -72,8 +72,12 @@ mutant: *"Consider encoder/decoder as two separate or one new component shared b
 
 - **The Codec is a protocol component, and it splits the old Task.** The Codec maps between world and wires: `encode(input) → input bits`, `encode_target(label) → expected output bits`, `decode(output bits) → value`. A task **selects** a codec (plus codec params). The Task keeps the dataset and the scorer.
 - **Codec params are protocol.** MNIST's k threshold levels per pixel set `num_inputs`. The exported model is therefore (genome, codec id, codec params).
-- **Training never decodes.** Scoring compares output bits with `encode_target(label)` in bit space, lane-parallel. Decoding per lane would break SIMD, so `decode` runs only in run/ and in reports.
-- **Same code, different call level.** In train the codec runs **once, at Run**: the whole dataset and its labels are encoded to bit form at load, and the hot loops never touch it. In run/ it runs **per round**. The train-side placement follows the scope hypothesis (the codec's inputs are dataset-scoped).
+- ~~Training never decodes.~~ **Retracted** (mutant, 17:30): a Trainer can't backpropagate without knowing which output bits matter. For a float, a sign or exponent bit outweighs a mantissa LSB. Revised:
+  - **The Codec owns error attribution as well as encoding.** Besides `encode_target`, it gives each output bit its **significance**: how much the decoded error changes if that bit flips (a discrete gradient at the output boundary). That is the first step of any backward search, and the Trainer and Mutator consume it as evidence.
+  - **Separable codecs** (one-hot, thermometer; Gray only approximately): significance is a constant per bit, so scoring and attribution stay in bit space and lane-parallel.
+  - **Non-separable codecs** (binary integers, floats): significance depends on the value (a float mantissa bit's weight depends on its exponent). They must decode per lane, transposing out of lane form at roughly a lane-width cost. That cost is paid at the output boundary only, once per round, not per tick.
+  - The codec **declares** which kind it is, so the cost is visible in the experiment file rather than discovered.
+- **Same code, different call levels.** In train, **encoding** runs once, at Run: the whole dataset and its labels are encoded to bit form at load (the inputs are dataset-scoped). **Attribution** runs at the output boundary of each round (the inputs are round-scoped). In run/, encode and decode run per round. The kernel's hot loops never touch the codec.
 - **Installation:** run binary = codec (front and back) + packed kernel + embedded genome blob.
 
 Options:
