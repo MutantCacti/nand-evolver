@@ -6,7 +6,7 @@
  * There are two distinct word semantics used:
  *
  *      1. A word is wires; an arena is a contiguous block of
- *         bits indexed by word and then bit offset within word.
+ *         bits indexed by (word and then bit offset within word).
  *         run/ does this to optimise memory usage for inference.
  *
  *      2. A word is examples; an arena is an array of wires

@@ -14,10 +14,7 @@
 #include <stdio.h>
 
 
-// MARK: Datasets
-
-
-// XOR
+// MARK: XOR
 static const uint8_t XOR_INPUT_BITS[4 * 2] =
 {
     0, 0,
@@ -35,7 +32,7 @@ static const uint8_t XOR_OUTPUT_BITS[4 * 1] =
 };
 
 
-// MUX
+// MARK: MUX
 static const uint8_t MUX_INPUT_BITS[8 * 3] =
 {
     0, 0, 0,
@@ -61,7 +58,7 @@ static const uint8_t MUX_OUTPUT_BITS[8 * 1] =
 };
 
 
-// MARK: Epochs
+// MARK: task_shuffle
 
 // Rebuild order[] as this epoch's permutation
 static void task_shuffle(Task * task)
@@ -86,7 +83,7 @@ static void task_shuffle(Task * task)
 }
 
 
-// MARK: task_init
+// MARK: task_alloc
 
 
 static void task_alloc(Task * task, uint64_t seed)
@@ -97,6 +94,8 @@ static void task_alloc(Task * task, uint64_t seed)
     task_shuffle(task);
 }
 
+
+// MARK: task_from_arrays
 
 static Task * task_from_arrays(const char * name, uint64_t seed,
                                size_t num_examples, size_t num_inputs, size_t num_outputs,
@@ -115,14 +114,14 @@ static Task * task_from_arrays(const char * name, uint64_t seed,
         return NULL;
     }
 
-    task->name         = name;
+    task->name = name;
     task->num_examples = num_examples;
-    task->num_inputs   = num_inputs;
-    task->num_outputs  = num_outputs;
+    task->num_inputs = num_inputs;
+    task->num_outputs = num_outputs;
 
-    task->input_bits  = calloc(num_examples * num_inputs,  sizeof(uint8_t));
+    task->input_bits = calloc(num_examples * num_inputs, sizeof(uint8_t));
     task->output_bits = calloc(num_examples * num_outputs, sizeof(uint8_t));
-    task->order       = calloc(num_examples, sizeof(size_t));
+    task->order = calloc(num_examples, sizeof(size_t));
 
     if (!task->input_bits || !task->output_bits || !task->order)
     {
@@ -131,7 +130,7 @@ static Task * task_from_arrays(const char * name, uint64_t seed,
         return NULL;
     }
 
-    memcpy(task->input_bits,  input_bits,  num_examples * num_inputs);
+    memcpy(task->input_bits, input_bits, num_examples * num_inputs);
     memcpy(task->output_bits, output_bits, num_examples * num_outputs);
 
     task_alloc(task, seed);
@@ -139,6 +138,8 @@ static Task * task_from_arrays(const char * name, uint64_t seed,
     return task;
 }
 
+
+// MARK: task_from_file
 
 /* TODO: Load a dataset too large to be a C array (MNIST). */
 static Task * task_from_file(const char * name, uint64_t seed, const char * path)
@@ -149,6 +150,8 @@ static Task * task_from_file(const char * name, uint64_t seed, const char * path
     return NULL;
 }
 
+
+// MARK: task_init
 
 /* This is a semi cursed implementation of a class registry in C.
  * To add a Task, write it as a C array, include it in this file
