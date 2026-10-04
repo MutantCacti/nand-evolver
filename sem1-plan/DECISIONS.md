@@ -171,9 +171,36 @@ amendment, no edits to DELTA's items.
   Phase 2A consequence: the inference binary is **kernel + codec + genome blob**, three parts, of
   which only the codec is task-specific. The kernel stays task-agnostic, which is the property
   worth protecting.
-- **Sharpening "training never decodes":** correct for the hot path, but reports decode. So
-  `decode` is absent from Examples-and-below, not from the train binary — which means the codec is
-  linked into *both* binaries anyway, reinforcing the `core/` placement.
+- **On the retraction** (mutant 17:30, DELTA's revision): agreed, and it *strengthens* the `core/`
+  placement rather than complicating it. With attribution running at each round's output boundary,
+  the codec is active in train's inner loops, not merely in reports — so it is unambiguously
+  shared code, not a run-only concern.
+- **But the separability criterion is misstated, and it misclassifies binary.** "Constant per-bit
+  significance" doesn't separate the cheap cases from the expensive ones:
+  - Plain binary integers *do* have constant per-bit significance — flipping bit `k` always
+    changes the value by exactly `2^k`. By the stated criterion binary is separable, which
+    contradicts its listing.
+  - Gray is *not* approximately separable, it's firmly non-separable: flipping Gray bit `k` flips
+    decoded bits `0..k`, so the numeric change depends on the current value (3-bit Gray, flip the
+    MSB: `0→7` is +7, `1→6` is +5).
+
+  The property that actually matters is **whether attribution is computable in bit space from
+  `out ^ expected` alone**:
+  - **one-hot, thermometer** — yes. The XOR gives both which bits are wrong and which way to move,
+    so attribution stays lane-parallel with no decode.
+  - **binary, Gray, float** — no. A wrong high bit and wrong low bits can't be fixed
+    independently, so the fix direction isn't bit-local even when the magnitude is constant.
+    These need the decoded value, hence the per-lane transpose.
+
+  Same groupings as DELTA's, but the criterion has to be stated this way or binary reads as cheap
+  when it isn't. Suggest the codec's declared kind be named for this — *bit-attributable* vs
+  *value-attributable* — since that is what the cost follows from.
+- **"One component shared between train and run" holds for the scheme, not the implementation.**
+  The codec faces the same lane-vs-packed duality as the kernel: in train it operates on
+  lane-packed words, in infer on bit-packed ones. So expect a lane codec and a packed codec,
+  mirroring the two kernels, with the **shared artifact being the declaration** — scheme, params,
+  significance table, attributability kind. That declaration is what the model file carries, and
+  what the differential test pins.
 - **Two tests for DESTUB at 2C**, extending DELTA's round-trip: (i) `decode(encode_target(v)) == v`
   across the task domain, and (ii) **the same codec object linked into both binaries**, which
   stretches the existing lane-vs-packed differential test from the kernel to the whole I/O path.
