@@ -1,149 +1,98 @@
 # SYN 1B: Decisions
 
-Priority-ordered A/B decisions for `mutant`. Each item: question, options, recommendation, why.
-`^&` marks a constraint from Prof. Jefferson. Drafted by DELTA, reviewed by THREAD.
+Priority-ordered A/B decisions for `mutant`. `^&` marks a constraint from Prof. Jefferson.
+Drafted by DELTA and THREAD. Round 1 text is in git history (`43c6dea`).
 
-## Settled in 1A (veto if wrong)
+## Round 1 rulings (mutant, 2026-10-04)
 
-- **Hierarchy** (mutant's): Run → Generations (Selector, Mutator) → Individuals (Genome) → Examples (Trial) → Ticks (Arena) → Instructions (Kernel). Each component varies the loop below it.
+| # | Topic | Ruling |
+|---|---|---|
+| 1 | Variant attachment | **A.** One binary per algorithm; one file per component; `#if` in code. Target figure ^&: one 2D plot, y = loss, x = time, one line per binary (combination of optimisations). |
+| 2 | Parallel partition | **A.** Declared per mode. Individual mode at population 1 = one individual, examples serial, ticks serial, instructions parallel. Individual mode adds a component at the Individuals level that updates structure per example. |
+| 3 | Skipped-gate wire | **Neither: it's a protocol variation.** Hold (A) is the P1 reference protocol. |
+| 4a | Arena boundaries | Superseded by "rounds" (round 2, item 3). |
+| 4b | Offspring arena | Algorithm variation. **A** (blank) is the P1 reference. |
+| 5 | Task interface | **A.** `dataset.h` + `task.h`. |
+| 6a | Encoding defaults | Out of scope. All scoring is task implementation. |
+| 6b | `max_ticks` | **A.** Depth ceiling, first-class hyperparameter. |
+| 7 | Trace | **A** for P1. Traces must travel up several levels, so backprop probably suits individual mode better. |
+| 8 | Address slack | **A.** Runtime scalar, worth trying. |
+| 9 | Selector history | A over B, but reopened via the veto (round 2, item 1). |
+| 10 | Axes disagreeing | Reopened under "config above the build" (round 2, item 4). |
+| — | Stop condition | Algorithm variation. Infrastructure needs room for zero-error and patience. |
+
+**Vetoed / struck from Settled:**
+- Selector `scores → indices` / Mutator `genome → genome` (fails backprop).
+- Advance mask (implementation detail, out of scope). The idea it served stands: individuals never wait on each other example by example.
+
+**Clarified:** RNG is Run-level. P1 is exactly as intended.
+
+## Settled (current)
+
+- **Hierarchy:** Run → Generations → Individuals (Genome) → Examples (Trial) → Ticks (Arena) → Instructions (Kernel). Each component varies the loop below it.
 - **Data rules:**
   1. Config moves down, read-only, written once at Run ^&.
   2. Results move up one level, reduced at each boundary.
-  3. Buffers are allocated at their owning level and written below it by pointer (Arena, and any added noun).
+  3. Buffers are allocated at their owning level and written below it by pointer.
 - **One level per function.** `main` is the whole pipeline in a few tiered loops.
-- **Selector** is `scores → indices` and never reads a genome. **Mutator** is `genome → genome` and never reads a score.
-- **Ready is protocol, not task.** The kernel reads its own halt from the Arena. Ready initialises to all-ones (active low).
-- **Advance mask** replaces "lane retirement". It marks the lanes due their next row (handshake).
-- **Batching is dataset preparation; Task is scoring, one file per dataset behind a shared header.** Task is not a hierarchy level.
-- **Example source is indexed, not walked:** `(seed, epoch, index) → examples`.
-- **RNG:** no shared generator object. Streams are derived from `(seed, level indices)` at the draw site, so the Mutator is pure `(genome, seed, gen, individual) → genome'`.
-- **Vocabulary:** "frontier" is retired. Use *active set* (gates executing this tick), *clocked/multi-rate* (tick modulo), *event-driven* (next-index), *quiescent* (empty active set), and *scoring* for the meaning boundary. No name is reused across levels.
-- **P1:** every gate every tick. Population mode is tournament + elites (elite = identity mutation). Inputs are reserved.
+- **Ready is protocol, not task.** Ready initialises to all-ones (active low).
+- **Batching is dataset preparation; Task is scoring.** `score()` measures correctness only. Cost terms (ticks, live gates, address space) travel up and are weighted at selection. Task is not a hierarchy level.
+- **Cost prices live gates, not present gates** (protects the inert reservoir under hold + slack).
+- **Example source is indexed, not walked.**
+- **Determinism under thread count** (same seed, 1 vs N threads, bit-identical) is the test of the declared partition.
+- **Vocabulary:** *active set*, *clocked/multi-rate*, *event-driven*, *quiescent*, *scoring*; no name reused across levels; *round* (below).
 
-## Decisions
+## Round 2: open items
 
-### 1. How do variants attach and compose? (Goal 2)
-Composable at will ^&. A variant that changes a struct layout or a hot loop cannot be a runtime branch without costing the kernel.
-- **A.** Structural variants are **compile-time pairs** (`-D` flags into a single read-only config header): gene schema + kernel (tick modulo, next-index), trace + backprop mutator. Scalars, rates and registry names (task, selector, mutator) are runtime JSON read at Run.
-- **B.** Everything is runtime (function-pointer registries, union/optional fields in Genome), with one binary.
-- **C.** One binary per variant combination, selected by Makefile targets only, with no in-source `#if`.
+### 1. Selector / Mutator: split by scope, not by data type
+Round 1 split on data type (scores vs genomes), and backprop breaks it. Proposal: split on **scope**.
+- **Selector: cross-individual.** It reads all individuals' records (history included, per old item 9) and returns indices. It never reads a genome, and it's the only place individuals are compared.
+- **Mutator: within-individual.** It reads **one** individual: the genome **plus that individual's own evidence** (error, per-output error, per-Nand stats, trace). It never reads another individual, so it stays fully parallel.
 
-**Rec: A.** It keeps the kernel branch-free and gives Make one axis per structural variant, so combinations are build matrix entries for P2 comparisons. Needs a follow-up: which variants are mutually exclusive (scheduling: every-tick | clocked | event-driven) and which are paired.
+Why:
+- "No edges between individuals" already rules out the only standard two-genome operator (crossover), so every operator we want is within-individual.
+- **One interface, two call sites.** Population mode calls `Mutator(genome, evidence)` from Generations between generations. Individual mode calls the same function from Individuals between examples. Blind mutation, confusion matrix and backprop then become algorithm variations of one component that compose with either mode ^&.
+- Evidence is another noun with Individual scope (data rule 3). Its type is fixed by the algorithm variation: empty for blind mutation, stats for the confusion matrix, a trace for backprop.
 
-### 2. Is the parallel/serial partition a per-mode declaration?
-The flattened (genome, batch) split ^& assumes Examples are parallel. Individual mode mutates the genome between batches, making Examples serial within an individual.
-- **A.** Each mode declares which levels are parallel. The work-splitter flattens whatever is declared parallel. P1: Instructions/Examples/Individuals parallel, Ticks/Generations serial. Individual mode: Examples serial.
-- **B.** The partition is fixed. Individual mode is restructured to fit it (e.g. it mutates only between generations).
+Costs:
+- Evidence must live from evaluation until mutation. Across the Generations boundary that's expensive for traces, which is why backprop suits individual mode (evidence consumed immediately, one level up).
+- Informed mutators' rates may depend on evidence, so hyperparameters are no longer separated purely by signature.
 
-**Rec: A.** Parallelism is a loop transformation over declared loops ("SIMD without being designed for it"). Individual mode at population 1 still parallelises over K independent replicas.
+**Doesn't fit:** any cross-individual operator that needs genomes (novelty/diversity selection, crossover). It would need a third component. None is ruled in.
 
-### 3. Skipped gate (tick modulo): does it hold its wire?
-- **A.** Hold. A senior's wire keeps its value on skipped ticks and juniors can never write it. In train, colliding juniors are **kept and ignored** (the neutral-drift reservoir). At export they are **pruned** (canonicalisation stays a pass).
-- **B.** Release. Any gate may write a wire on ticks its senior skips (time-multiplexed wires).
+- **A.** Scope split as above.
+- **B.** Monolithic Evolver (selection + mutation) as one swappable component per structure.
+- **C.** Strict data-type split; informed mutation only in individual mode.
 
-**Rec: A.** It preserves both documented invariants (adding a gate is neutral, README canonicalisation). B is more expressive but makes adds conditionally destructive and needs a clock-aware canonicaliser.
+**Rec: A.** It keeps both components pure in the sense that matters (parallel, no cross-talk) without banning informed mutation in population mode.
 
-### 4. Arena persistence, shuffle, offspring arena
-- **4a.** There are **three** arena boundaries, not one: **rows within an example** (must persist — that is what the handshake *is*), **examples within a lifetime** (the real question here), and **offspring** (4b).
-  **A.** One flag on the dataset declaration: `iid` = single-row examples, arena zeroed per example, shuffled; `sequential` = multi-row examples, arena persists across rows, zeroed between examples, not shuffled. **B.** Two independent flags (persistence, shuffle).
-  **Rec: A**, with the row boundary outside the flag because it is definitional rather than chosen. Out-of-sync settings fail silently: a persistent arena plus shuffling makes fitness depend on the permutation. P3 streaming would later add a third value that also persists *across* examples; it is not a fourth boundary.
-- **4b.** Offspring arena: **A.** blank (Baldwinian). **B.** copy the parent's (Lamarckian).
-  **Rec: A.** It's moot under iid. In lane layout "the parent's arena" is 64 arenas, so copying isn't well defined.
+### 2. Variation taxonomy
+mutant's behavioural axis: **protocol** (train and run must agree) > **algorithm** (independent in train or run) > **parameter** (independent within one execution). Searched for misfits:
 
-### 5. Task interface
-- **A.** Two headers: `dataset.h` (load, indexed access `examples(seed, epoch, index)`, `sequential|iid` flag) and `task.h` (`score(outputs, expected, active) → {error, error_max}`). Datasets may be reused across tasks.
-- **B.** One `task.h` per dataset covering both access and scoring.
+- **Frontier execution is protocol.** Tick modulo adds a gene run/ must honour, and next-index changes execution semantics.
+- **Execution variation** (misfit): thread count, CPU vs GPU, lane vs packed layout, behaviour-preserving event-driven scheduling, compiler flags. These change **time, never results** (the determinism test proves it). On the target figure they move a line along x without changing its shape, so a figure either holds them fixed or compares only them. The GPU port is one.
+- **Task** (misfit): the problem, not the solver. One figure per task.
+- **Replicate** (seed): formally a parameter, but statistical in role. Lines are means over seeds.
+- **Parameters are scoped to algorithms** (tournament size is meaningless at population 1; slack is meaningless under release). The taxonomy is a **tree**: protocol → algorithm → its parameters.
+- **Category migration:** individual mode is an algorithm variation in train, but becomes a protocol variation if it ever runs on-device.
 
-**Rec: A.** It's mutant's own split (batching is preparation, the task is scoring). `error_max` normalises across tasks and short final batches.
+- **A.** Behavioural tree (protocol > algorithm > parameter) plus three orthogonal axes: task, execution, replicate.
+- **B.** The three behavioural categories only. Execution, task and seed are treated as parameters.
 
-**An example is not always one row.** Under `sequential` one example is a *row sequence with a
-single label* (Sequential MNIST: 28 rows, one digit), so the accessor must yield a length, not
-just a row, and **scoring happens at the end of a sequence, not per row**. Note the Settled
-advance mask already presumes multi-row examples — lanes due their next row — so the accessor
-has to supply them. For `iid` the length is 1 and nothing changes.
+**Rec: A.** Execution variations otherwise contaminate the time axis of the target figure without changing any loss curve.
 
-### 6. Grading defaults and the tick budget
-- **6a.** The default output encoding is keyed to the output's measurement scale. The task author picks; these are the library defaults:
-  - **nominal** (classes, incl. MNIST digits): one-hot / group-sum + argmax
-  - **ordinal or small range**: thermometer (Hamming = |v−w| exactly)
-  - **large range**: Gray (locally smooth, caveat: extremes look close)
+### 3. Rounds (replaces "row" and the iid/sequential flag)
+A **round** is one input → ready → output handshake. An **example** is self-contained, always shuffled and always parallelisable, and contains 1..R rounds. The arena persists across ticks and rounds and is cleared between examples. XOR/MUX/MNIST have R = 1; Sequential MNIST has R = 28.
 
-  **A.** Ship these three as scorer helpers. **B.** Raw per-bit Hamming only; tasks build their own.
-  **Rec: A.**
-- **6b.** `max_ticks` is a **depth ceiling**, not a safety bound. Minimum ticks to ready ≥ circuit depth, so a tight budget or a tick penalty hides deep solutions (XOR optimum needs ≥3). **A.** First-class hyperparameter, logged with every run. **B.** Fixed per task.
-  **Rec: A.**
+- The iid/sequential distinction becomes R = 1 vs R > 1, not a flag.
+- An example must declare **which rounds are graded** (Sequential MNIST grades only round 28).
+- **Streaming (mutant's open question):**
+  - **A.** A stream is one very long example. Parallelising means chunking into examples, and state resets at chunk boundaries.
+  - **B.** Persistence across examples, which breaks "self-contained, shuffled, parallel".
 
-### 7. Search-backprop trace: retain or recompute?
-The kernel is deterministic and the example source is pure, so the trace is reproducible.
-- **A.** Recompute: re-run only the individuals the Mutator wants traces for. The default build stays trace-free.
-- **B.** Retain `T×W` words per work item during evaluation.
+  **Rec: A**, consistent with "one example is always self-contained". The chunk length becomes a parameter that bounds the memory horizon the model can learn.
 
-**Rec: A, with a caveat.** Under `sequential` datasets or individual mode, recomputing example k replays the whole lifetime up to k. Revisit when P2(c) is built.
-
-### 8. Address-space slack (`i+1+2N`)
-Slack sets the **inert-add rate**: a random output address lands on an occupied wire with probability ≈ occupied/space, and a new gate always loses that collision.
-- **A.** Runtime scalar (default factor 2), documented as the inert-add rate.
-- **B.** Fixed at 2N as now.
-
-**Rec: A.**
-
-### 9. Selector input: absolute score only, or with history?
-Needed for delta-error / lifetime-error experiments (P2).
-- **A.** The score record carries optional history (parent score, lifetime mean). The Selector stays pure `records → indices`.
-- **B.** Absolute score only. History-based selection is a separate Selector with its own state.
-
-**Rec: A.** History is data with Generations scope, consistent with data rule 3.
+### 4. Configuration above the build
+*THREAD to write. Covers single-source descriptor vs build/runtime split, and absorbs round 1's item 10.*
 
 ## THREAD
-
-Reviewed, agreed with everything above. MNIST-is-nominal correction accepted — my slip, my own
-taxonomy contradicted itself. Two direct edits, three additions to Settled, one new item, one note.
-
-### Direct edits made
-
-- **4a, rewritten.** It named one boundary where there are three. Rows-within-an-example must
-  persist (that is the handshake), examples-within-a-lifetime is the actual question, offspring
-  is 4b. Options unchanged; the recommendation now excludes the row boundary as definitional.
-- **5, extended.** The accessor had no notion of a multi-row example, but the Settled advance
-  mask already presumes one. Added: under `sequential` an example is a row sequence with a
-  single label, so the accessor must yield a length and scoring happens at end-of-sequence.
-
-### Additions to "Settled in 1A"
-
-- **`score()` measures correctness only.** Cost terms — ticks, live gates, address space — travel
-  up in the Trial/Measurement record and are weighted at the **Selector**, never folded into
-  `error`. This follows from "never collapse to a scalar below selection": cost weights anneal,
-  so they cannot be baked in below the level that anneals them.
-- **Cost terms price *live* gates, not *present* gates.** Interaction between items 3 and 8:
-  hold-and-ignore means a large fraction of gates are inert **by design**, so a size penalty on
-  present gates would delete the neutral-drift reservoir that 3A exists to protect. Measurement
-  needs both counts under distinct names, and only the live one may carry a cost weight.
-- **The declared partition (item 2) is testable, and the test is determinism under thread
-  count:** same seed, 1 thread vs N threads, bit-identical results. One assertion covers three
-  invariants at once — declared-parallel levels have no hidden dependency, no shared RNG, and the
-  example source is indexed rather than walked. Hand it to DESTUB at 2C.
-
-### 10. The CLI half of Goal 2: what happens when the two axes disagree?
-
-Item 1 settles the build axis (`-D` structure) and the runtime axis (JSON scalars). Neither
-covers their **interaction**, which is where P2 comparison work will actually break: a config
-naming a variant the binary wasn't compiled with.
-
-- **A.** The binary reports its compiled-in variant set (`nande-train --caps`), a config naming
-  an absent variant **fails loudly at Run**, and the build identity (the `-D` set) is embedded
-  in the binary and emitted with every run alongside the runtime config.
-- **B.** Silent fallback to the compiled default, with a warning.
-- **C.** No introspection; the build matrix is tracked outside the program, in the Makefile and
-  run logs.
-
-**Rec: A.** Jefferson's "compare stepped improvements" ^& requires every result to be
-attributable to a `(build identity, runtime config)` pair. A silent fallback makes a build-matrix
-comparison quietly meaningless rather than loudly broken, which is the worst available failure
-mode for the one thing the project is graded on.
-
-### Note, not a decision: the stop condition
-
-Run owns it, and it is the only piece of Run-level state nobody has specified. Recommend a
-generations cap plus optional early stop on zero error, **computed at Generations and reduced to
-the single bit that reaches Run** — otherwise Run needs the score vector and starts doing
-selection, which is the exact mislabelling mutant caught when deriving the hierarchy.
