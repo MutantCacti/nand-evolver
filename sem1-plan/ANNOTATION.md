@@ -27,7 +27,7 @@ Four components own all the loops. Every other component is *called* by one of t
 | Owner | Loops (levels) | Calls |
 |---|---|---|
 | **Driver** | Study → Experiment → Run | Encoder, once per experiment |
-| **Runner** | Generation → Individual | Selector and Mutator, after each generation's individuals are measured |
+| **Runner** | Generation → Individual (train); Individual alone (infer) | Selector and Mutator, after each generation's individuals are measured |
 | **Tester** (train) / **Inferrer** (infer) | Example → Round | Kernel and Decoder every round; Trainer between examples |
 | **Kernel** | Tick → Instruction | none; it evaluates Nands directly |
 
@@ -65,7 +65,7 @@ The levels are defined below, top to bottom, for training.
 **Round**. One exchange: input values are written, the genome runs until it signals that its output is ready, and the output region is read. Per the README, "ready" means the genome drives wire `1+i` low. A round also ends after a configured maximum number of ticks, so a genome that never signals still produces a result.
 - That maximum is a ceiling on how deep a genome's logic can be, not merely a safety valve. A signal needs one tick per layer it passes through, so a solution needing more layers than the limit allows cannot be found at all — and charging a genome for the ticks it used also charges it for depth.
 - After each round, the **Decoder** reads the output region and turns it into the task's answer (e.g. which of ten digits an image shows). It also reports which output wires were wrong and how much each one matters, which the Mutator and Trainer can use to choose changes.
-- Each output layout declares how its error can be attributed. Either comparing produced wires with expected wires is enough to say which are wrong and which way to move them — true when one wire means one class, or when a number is written as a count of set wires — or a wrong high-order wire and wrong low-order wires cannot be corrected independently, as in a binary number, in which case every example must be read back separately at a cost.
+- Each output layout declares how its error can be attributed. Either comparing produced wires with expected wires is enough to say which are wrong and which way to move them — true when one wire means one possible answer, or when a number is written as a count of set wires — or a wrong high-order wire and wrong low-order wires cannot be corrected independently, as in a binary number, in which case every example must be read back separately at a cost.
 - The Tester tells the Decoder which rounds to skip (ungraded rounds), so the Decoder never decides what is graded. That cost is why skipping matters: an MNIST image fed as 28 rounds grades one of them.
 - Because the Encoder and Decoder share the output layout, one writing it and the other reading it, they have to be checked as a pair: encoding a label and then decoding the result must return that label. Neither component can be checked on its own.
 
@@ -87,7 +87,7 @@ Three kinds of choice distinguish one version of the program from another, in de
 - **Algorithm** — may differ between train and infer, but is fixed for one execution: whether a Trainer exists, how the Selector compares individuals, whether a child starts from a copy of its parent's memory space.
 - **Parameter** — may vary within one execution: rates, limits, population size, the tick maximum.
 
-Three further things vary around the program rather than within it: the **task** being solved, the **execution** (thread count, word size, target machine — these change how long a run takes and never what it produces), and the **seed**.
+Three further things vary between experiments, around the program rather than within it: the **task** being solved, the **execution** (thread count, word size, target machine — these change how long a run takes and never what it produces), and the **seed**.
 
 ## Rules the structure follows
 
