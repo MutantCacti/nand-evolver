@@ -27,7 +27,7 @@ Four components own all the loops. Every other component is *called* by one of t
 | Owner | Loops (levels) | Calls |
 |---|---|---|
 | **Driver** | Study → Experiment → Run | Encoder, once per experiment |
-| **Runner** | Generation → Individual | Selector and Mutator, after each generation's individuals are measured |
+| **Evolver** | Generation → Individual | Selector and Mutator, after each generation's individuals are measured |
 | **Tester** (train) / **Inferrer** (infer) | Example → Round | Kernel and Decoder every round; Trainer between examples |
 | **Kernel** | Tick → Instruction | none; it evaluates Nands directly |
 
@@ -40,18 +40,19 @@ The levels are defined below, top to bottom, for training.
 
 **Experiment**. One fully specified search, described by one **experiment file**. That file is the **Config**: it fixes the task, the encoding, every algorithm choice and every numeric setting.
 - Choices that change the program's structure are compiled in, so each combination of them is its own binary. Numeric settings are read at start-up.
-- The **Encoder** runs once per experiment and converts the Source into the **Dataset**: a list of examples (defined below) expressed as wire values. It produces both the input values to write into the input region and, from the labels, the expected output values.
+- The **Encoder** runs once per experiment and converts the Source into the **Dataset**: a list of examples (defined below) expressed as wire values. It writes the input values for the input region, and fills in each graded round's expected output values by calling the Decoder's label-to-wires function.
+- That function belongs to the Decoder, not the Encoder, even though labels come from the Source and the work happens here. Expected values must use exactly the layout the Decoder later reads back; if the two lived in separate components, that layout would be defined twice and could drift apart. The Encoder owns the **input** region, the Decoder owns the **output** region in both directions.
 - The Dataset is never changed after this, so every level below can read it freely without copying it.
 
 **Run**. One complete search with one random seed. The Driver repeats it per experiment to measure how much results vary between seeds.
 - `# Rng`: the random seed. Every random choice anywhere below is computed from the seed plus its position, e.g. which example is used as the 40th example of generation 12. There is no stored random state that code shares or advances, so a run gives the same result however its work is divided between threads.
 - For the same reason, examples are never shuffled into a stored order. The example to use is computed from (seed, generation, position within the generation).
 
-**Generation**. One step of evolution, looped by the **Runner**. The **population** (the current collection of individuals, defined next) is measured; then:
+**Generation**. One step of evolution, looped by the **Evolver**. The **population** (the current collection of individuals, defined next) is measured; then:
 - the **Selector** compares the results and chooses which individuals become parents;
 - the **Mutator** makes the next population by copying parents' genomes with random changes, e.g. adding a Nand or rewiring an index.
 
-**Individual**. One genome and its own memory space, which the code calls the **Arena**. The Runner hands each individual to a Tester, together with the range of examples to measure it on.
+**Individual**. One genome and its own memory space, which the code calls the **Arena**. The Evolver hands each individual to a Tester, together with the range of examples to measure it on.
 - Individuals never read each other's state, so they can be measured in parallel.
 - How the examples are divided is decided in one place, outside the Tester: in the simplest configuration, every (individual, example) pair is a separate piece of work.
 - The **Trainer** is optional. When enabled, it changes the individual's genome *during* measurement, between examples, using evidence from the results so far. Its examples must then run in order, so the Tester is handed all of them at once.
@@ -62,8 +63,11 @@ The levels are defined below, top to bottom, for training.
 - The **Tester** loops over the examples it was given and their rounds. It writes each round's input values into the input region, has the Kernel run the genome, and on graded rounds compares the outputs with the expected values. It records each example's result (how wrong, and how many ticks it took) and passes the records up unchanged.
 
 **Round**. One exchange: input values are written, the genome runs until it signals that its output is ready, and the output region is read. Per the README, "ready" means the genome drives wire `1+i` low. A round also ends after a configured maximum number of ticks, so a genome that never signals still produces a result.
+- That maximum is a ceiling on how deep a genome's logic can be, not merely a safety valve. A signal needs one tick per layer it passes through, so a solution needing more layers than the limit allows cannot be found at all — and charging a genome for the ticks it used also charges it for depth.
 - After each round, the **Decoder** reads the output region and turns it into the task's answer (e.g. a class number). It also reports which output wires were wrong and how much each one matters, which the Mutator and Trainer can use to choose changes.
-- The Tester tells the Decoder which rounds to skip (ungraded rounds), so the Decoder never decides what is graded.
+- Each output layout declares how its error can be attributed. Either comparing produced wires with expected wires is enough to say which are wrong and which way to move them — true when one wire means one class, or when a number is written as a count of set wires — or a wrong high-order wire and wrong low-order wires cannot be corrected independently, as in a binary number, in which case every example must be read back separately at a cost.
+- The Tester tells the Decoder which rounds to skip (ungraded rounds), so the Decoder never decides what is graded. That cost is why skipping matters: an MNIST image fed as 28 rounds grades one of them.
+- Because the Decoder both writes expected values and reads produced ones, it is the only component holding a reversible pair. Encoding a label and decoding it again must return that label, which tests the Decoder on its own.
 
 **Tick** and **Instruction**. A tick is as defined in the README: every Nand is evaluated against the current memory space, then the results are written back in reverse Nand index order. An **instruction** is the evaluation of one Nand.
 - The **Kernel** runs ticks until the ready signal or the tick limit, and counts them. It is the only component that touches individual Nands.
@@ -71,17 +75,29 @@ The levels are defined below, top to bottom, for training.
 
 ## The inference tree
 
-infer has no search, so it has no Generation level and no Selector, Mutator, Trainer or Tester. The Runner hands the finished genome to the **Inferrer**, which runs examples from the outside world. It writes inputs, runs rounds through the Kernel, and passes every round's output through the Decoder to whoever needs it.
+infer has no search, so it has no Generation level and no Selector, Mutator, Trainer or Tester. The Driver hands the finished genome to the **Inferrer**, which runs examples from the outside world. It writes inputs, runs rounds through the Kernel, and passes every round's output through the Decoder to whoever needs it.
 
 A finished genome is saved as a **model file**: the genome plus the identity and settings of the Encoder and Decoder it was trained with. train and infer must share the Kernel, Encoder and Decoder, or the saved genome would mean something different in each.
+
+## Configurations
+
+Three kinds of choice distinguish one version of the program from another, in decreasing scope:
+
+- **Protocol** — train and infer must agree, or a saved genome means something different in each: the Encoder, the Decoder, the output layout, and how the Kernel schedules Nands.
+- **Algorithm** — may differ between train and infer, but is fixed for one execution: whether a Trainer exists, how the Selector compares individuals, whether a child starts from a copy of its parent's memory space.
+- **Parameter** — may vary within one execution: rates, limits, population size, the tick maximum.
+
+Three further things vary around the program rather than within it: the **task** being solved, the **execution** (thread count, word size, target machine — these change how long a run takes and never what it produces), and the **seed**.
 
 ## Rules the structure follows
 
 1. **Each level is one function**, so the loop tree is also the call graph, and the top of the training program is a few nested loops in one function.
-2. **Only components named for an action own loops.** A component may own several adjacent levels. Data is read and written by components, never in charge of a loop.
-3. **Configuration flows down.** The experiment file is read once, at Experiment, and nothing below may change it.
-4. **Results flow up one level at a time, unsummarised, until the Selector.** Per-example records reach the Selector intact. How they are combined into one comparison (average error, worst case, ticks used, genome size, ...) is a selection decision, so only the Selector makes it.
-5. **Memory is allocated at the level that owns it and written below it.** The Arena is allocated once per individual, cleared once per example and written once per tick.
+2. **Only components named for an action own loops.** A component may own several adjacent levels, provided any level that is sequential under one configuration and parallel under another has exactly one place where that is declared. Data is read and written by components, never in charge of a loop.
+3. **Name the owner, not the state.** If the best name available for a component is a noun for the state it tracks, then the loop belongs to whoever owns that state and the component should not exist. A component whose whole content is a loop is not a responsibility, and an awkward component name is usually evidence of a misplaced loop rather than a wording problem.
+4. **Configuration flows down.** The experiment file is read once, at Experiment, and nothing below may change it.
+5. **Results flow up one level at a time, unsummarised, until the Selector.** Per-example records reach the Selector intact. How they are combined into one comparison (average error, worst case, ticks used, genome size, ...) is a selection decision, so only the Selector makes it.
+6. **Memory is allocated at the level that owns it and written below it.** The Arena is allocated once per individual, cleared once per example and written once per tick.
+7. **A genome is charged for the Nands that do something, not for all of them.** By the README's reverse-index writeback, a Nand whose output wire is already driven by an older Nand never takes effect. Such Nands cost nothing and can accumulate until a later change makes one useful, so counting them against a genome's size would remove that reserve.
 
 ## How training uses the hardware
 
@@ -92,3 +108,4 @@ In training, each wire is stored as one 64-bit word rather than one bit, as the 
 - Whether evolution is best expressed as one component or as Selector + Mutator.
 - Whether a component always sits at the level where all of its inputs exist.
 - Whether many Encoders can share one Decoder.
+- Whether **Encoder** and **Decoder** are the right names. The two are split by *which region they own* — input versus output — while their names describe *direction*. The Decoder owning a label-to-wires function follows from the split but reads against its name, which by rule 3 is a reason to suspect the names rather than the split.
