@@ -191,3 +191,26 @@ THREAD's commentary arrived on wire. What survives, folded here:
 
 **Remaining inconsistency in ARCHITECTURE.md @ 80f64eb (both):**
 - `Experiment (Encoder)` puts a non-iterating establisher in executor position. Under the table, Experiment's loop is the Driver's, and the Encoder is called once before it.
+
+### Round 3 (wire, 2026-10-05): loop owners
+
+**mutant's rulings:**
+- **The Decoder is at Round in both trees.** It decodes every round; the Tester alone applies the graded-rounds schedule, so the Round still knows nothing about grading. Cost: decoding ungraded rounds (R× for value-attributable codecs). Benefit: per-round attribution as Trainer evidence.
+- **"Evaluator" and "Sequencer" rejected** as names for components whose only job is a loop between two other things.
+- **The loop-ownership rule is kept, with the Driver exempt** (it's tooling on top of the evolutionary system).
+- **"Clock" is state, not action.** The Kernel owns the clock.
+
+**Resulting owners (DELTA + THREAD agreed):**
+```
+Driver (tooling)   Study → Experiments → Runs     calls Encoder once, before the Runs
+Evolver            Generations → Individuals      calls Selector, Mutator after the Individuals
+Tester / Inferrer  given example range → Rounds   writes inputs, calls Kernel, Decoder per round;
+                                                  Trainer between examples in its range
+Kernel             Ticks → Instructions           ready check, max_ticks; returns per-lane ticks
+```
+- **The Kernel owns the tick counter.** That restores the 1A Settled line "the kernel reads its own halt from the Arena", which a separate Clock would have broken. Its interface stays narrow: `(genome, arena, max_ticks) → per-lane ticks`, with no task, world or grading concept. All protocol execution variations (tick modulo needs `t`, next-index needs an active set) are therefore **one swappable Kernel file** each, which matches 1B item 1 (one file per component).
+- **The Tester is range-agnostic** (THREAD). It loops over the example range it is given, and the splitter chooses the chunk: 1 example in P1 (the fully flattened (genome, example) product), all examples in individual mode (Examples serial, Individuals still parallel). The varying parallel/serial declaration has **one site, the chunk size**, and no component's structure changes between modes. The Trainer is called between examples within a chunk, so it never runs in P1.
+- **No one below the Selector reduces.** One lane = one example, so the Kernel's per-lane ticks are already per-example. The Tester attaches them to per-example records unchanged. `ticks_max`/`ticks_total`, like error, are reductions over examples and belong to the Selector (Q5.3).
+- **`Experiment (Encoder)` → Driver-owned.** The Encoder is called once, before the Runs.
+
+**Derivation rule (THREAD), for the context annotation:** *if the best name for a loop's owner is a noun for the state it tracks, the loop belongs to whoever owns that state.* In retrospect it catches Clock → Kernel, Evaluator → Evolver and Sequencer → Tester.
