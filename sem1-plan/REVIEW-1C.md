@@ -112,3 +112,48 @@ The table shows nothing called at Run, but the **order** has to be computed ther
 establisher too, exactly as Experiment has the Encoder. Two levels, same pattern: a once-per-
 iteration setup step that varies nothing below it. That's worth stating, since presented only via
 the Encoder it reads as a special case rather than a second kind of component.
+
+## Round 2 (mutant's notes, 2026-10-05; DELTA response)
+
+**Rulings recorded:**
+- Q1: Source > Encoder > Dataset.
+- Q3: Decoder after the Example.
+- Q4: Driver.
+- Q5: train and infer trees separated; executor `(` and state `#` marked separately; Rng readable by everything below it (arrow into a box = read-only access); Decoder → Trainer arrow added; ready and the declared partition left off by design (protocol detail; variation-dependent).
+- Naming constraint: **only an agentive noun (component/file) owns a loop; stateful nouns are called by loops.**
+
+### Note 1: order is a lookup, not a stage
+Agreed, and it retracts THREAD's "Run has an establisher too". The example at any point is a pure lookup, `Dataset[index(seed, generation, example)][round]`, so nothing builds an ordered structure. Keying on `generation` means every individual in a generation sees the same examples (a fair comparison) and the examples change between generations. Pure lookup is also what makes the flattened parallel split safe.
+
+### Note 2: Tester instead of Verifier
+**Yes.** A component that drives inputs, observes outputs and checks them against expected values is a *testbench* in hardware terms, so **Tester** is the accurate name. One consequence: infer drives inputs too, so the Inferrer is the infer-side counterpart (drive + decode, no check). Driving inputs is protocol; checking is task. That split falls on the Tester/Inferrer boundary rather than inside either.
+
+### Q5.3: who reduces per-example results? Rec: the Selector
+The reduction (mean error, worst case, error-then-cost, ...) is selection *policy*, so it carries algorithm and parameter variation.
+- If the Tester reduces, selection policy leaks below Generation.
+- **Lexicase selection** (Spector), a standard GP method, selects on *unreduced* per-example errors. A Tester-side reduction would make it impossible to express.
+- So the Tester emits raw per-example records, and the Selector reduces (or doesn't).
+- Cost: individuals × batches records per generation, which is small at 64 examples per lane batch.
+
+### Q2 re-asked: which agentive component owns each loop?
+Applying the constraint to the current train tree leaves loops whose owner is a stateful noun or nothing:
+
+| Loop (level iterates) | Current owner | Problem | Proposal |
+|---|---|---|---|
+| Experiments (Study) | Driver | — | Driver |
+| Runs (Experiment) | Encoder | Encoder runs once and doesn't iterate Runs | Driver also iterates replicates? Or a separate agent |
+| Generations (Run) | Rng | stateful noun, now just a lookup (note 1) | **Evolver**: iterates generations, calls Selector + Mutator. Your original top-level name, and it keeps the tracked Evolver vs Selector+Mutator question in one place |
+| Individuals (Generation) | Selector, Mutator | they run *after* the loop, not as it | the work splitter dispatching individuals in parallel; name open (Dispatcher?) |
+| Examples (Individual) | Trainer | population mode has no Trainer | Tester iterates examples; the Trainer is called between them in individual mode |
+| Rounds (Example) | Verifier/Decoder | — | Tester |
+| Ticks (Round) | none | — | Tester (drive, tick to ready, latch) |
+| Instructions (Tick) | Kernel | — | Kernel |
+
+Open: is one agent owning several adjacent loops (Tester: Examples, Rounds, Ticks; Driver: Experiments, Runs) acceptable? Or must each loop have its own agent, i.e. one level per file?
+
+### Inconsistencies remaining in ARCHITECTURE.md (dd1b778)
+1. **Data flow diagram: Decoder is still inside the Round box,** contradicting the Q3 ruling (after the Example).
+2. **`Run (Rng)` puts a stateful noun in executor position,** against the naming constraint (see the table).
+3. **`# Arena` at Generation:** Generation's executors (Selector, Mutator) vary Genome, not Arena.
+4. **Infer tree has no Decoder,** but infer decodes every round. It belongs at Round under the Inferrer (or wherever the Inferrer's loop sits).
+5. **DECISIONS.md round-3 Settled** still says attribution happens "at the output boundary, once per round". It should become "after the Example, on graded rounds".
