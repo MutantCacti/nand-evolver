@@ -43,12 +43,13 @@ site of the one parallel/serial declaration that varies.
    Individual → Examples varies.
 3. **Name the owner, not the state.** If the best name for a loop's owner is a noun for the state
    it tracks, the loop belongs to whoever owns that state. This retired a proposed `Clock` (the
-   tick counter is Arena state, so the Kernel owns the tick loop), an `Evaluator`, and a
+   tick counter is the Kernel's own state, so the Kernel owns the tick loop), an `Evaluator`, and a
    `Sequencer`. A component whose entire content is a loop is not a responsibility.
 4. **One level per function**, so the nest is the call graph and the loop tree predicts the files.
-5. **Data rules.** Config moves *down*, read-only, written once at Run. Results move *up* one
-   level, reduced at each boundary. Buffers are allocated at their owning level and written below
-   it by pointer.
+5. **Data rules.** Config moves *down*, read-only, written once at Experiment (the experiment
+   file). Results move *up* one level at a time, **unreduced** until the Selector, which owns every
+   reduction over examples because reduction is selection policy. Buffers are allocated at their
+   owning level and written below it by pointer.
 
 Rules 1–3 were each derived from a naming problem rather than from analysis. That is not
 incidental: in this project **naming has been the diagnostic instrument**, and a name that feels
@@ -66,7 +67,7 @@ not as a cosmetic matter.
   generation subsumes it.
 - **Arena spans three levels for one buffer:** allocated at Individual, reset at Example, written
   at Tick. One reset boundary only — the example. Every example is therefore self-contained,
-  shuffleable and parallelisable regardless of how many rounds it contains.
+  order-independent and parallelisable regardless of how many rounds it contains.
 - **A round** is one input → ready → output handshake. An example contains 1..R rounds. `iid` vs
   `sequential` is just R = 1 vs R > 1, not a flag. Streaming is one long example.
 - **Rng is Run-level**: a seed, with streams derived from `(seed, level indices)` at each draw site.
@@ -81,10 +82,12 @@ not as a cosmetic matter.
 - **Encoder and Decoder are protocol**: shared between train and infer, pinned in the model file,
   which carries the genome plus *both* ids and params. Many encoders may share a decoder.
 - The **Decoder runs per round in both trees.** Its placement is independent of grading authority:
-  the **Tester** owns the graded-rounds schedule and passes "is this round graded" down as
-  read-only config. Being told is not deciding. The flag is load-bearing, not hygiene — for
-  value-attributable codecs, decoding is a per-lane transpose, and Sequential MNIST grades one
-  round in twenty-eight.
+  the **Tester** owns the graded-rounds schedule; the Round never knows it. *(Open, not ruled:
+  whether the Tester passes a read-only "is this round graded" flag down so the Decoder can skip
+  ungraded rounds. Being told is not deciding, and it matters for value-attributable codecs, where
+  decoding is a per-lane transpose and Sequential MNIST grades one round in twenty-eight. The
+  ruled default is that the Decoder decodes every round, which also gives the Trainer per-round
+  evidence.)*
 - The Decoder owns **error attribution**: a per-bit significance at the output boundary, consumed
   by Trainer and Mutator as evidence. Each scheme declares its kind: *bit-attributable*
   (one-hot, thermometer — `out ^ expected` alone gives both which bits are wrong and which way to
