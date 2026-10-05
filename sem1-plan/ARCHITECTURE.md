@@ -26,6 +26,12 @@ A level lists everything that *any* configuration of the program might change th
 
 ## Loop Trees
 
+Identify the series of nested loops that encapsulate stages of program execution.
+
+`*` = Loops over many
+`(` = Executor that varies state
+`#` = State varied
+
 ### Training
 
 ```
@@ -166,7 +172,7 @@ Experiment
 Three kinds of choice distinguish one version of the program from another, in decreasing scope:
 
 - **Protocol** — train and infer must agree, or a saved genome means something different in each: the Encoder, the Decoder, the output layout, and how the Kernel schedules Nands.
-- **Algorithm** — may differ between train and infer, but is fixed for one execution: whether a Trainer exists, how the Selector compares individuals, whether a child starts from a copy of its parent's memory space.
+- **Algorithm** — fixed for one execution of train, and absent from infer: whether a Trainer exists, how the Selector compares individuals, whether a child starts from a copy of its parent's memory space.
 - **Parameter** — may vary within one execution: rates, limits, population size, the tick maximum.
 
 Three further things vary between experiments, around the program rather than within it: the **task** being solved, the **execution** (thread count, word size, target machine — these change how long a run takes and never what it produces), and the **replicate** (the seed).
