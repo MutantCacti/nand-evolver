@@ -86,8 +86,8 @@ THREAD's restatement (round 4): **one authority, not one capability.** In the ex
   - **Decoder:** owns both output directions, `encode_target(label) → expected bits` and `decode(bits) → value`, plus attribution (below). Its params fix `num_outputs`. That pair is the only true inverse, so the round-trip test `decode(encode_target(v)) == v` targets the **Decoder alone**.
 - **The decoder side owns error attribution.** It gives each output bit its significance, a discrete gradient at the output boundary that the Trainer and Mutator use as evidence. Each scheme declares its kind:
   - **bit-attributable:** `out ^ expected` alone gives which bits are wrong and which way to move (one-hot, thermometer). Stays in bit space, lane-parallel.
-  - **value-attributable:** fixes aren't bit-local (binary, Gray, float). Decodes per lane at the output boundary, once per round, never per tick.
-- **Call levels:** in train, inputs and labels are encoded once at load. Attribution runs per round at the output boundary. In infer, encoding and decoding run per round. The kernel never touches either.
+  - **value-attributable:** fixes aren't bit-local (binary, Gray, float). Decodes per lane, once per graded round, never per tick.
+- **Call levels:** in train, inputs and labels are encoded once at load. Attribution runs **after the Example**, on its graded rounds only (1C Q3; the Round is ignorant of grading). In infer, encoding runs per round and the Decoder is called from the Example on every round. The kernel never touches either.
 - **Shared declarations, two implementations each:** like the kernel, the Encoder and the Decoder each have a lane and a packed implementation. The shared artifacts are two declarations (scheme, params; plus significance and kind for the Decoder), carried by the model file and pinned by a lane-vs-packed differential test over the whole I/O path. They have different hot-path status: the Encoder's lane form runs once at load, the Decoder's at every round boundary.
 - **Driver:** a thin Python driver is the experiment's entry point. Its stages are keyed by their inputs:
   1. compile train
