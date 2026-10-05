@@ -24,14 +24,14 @@ A level lists everything that *any* configuration of the program might change th
 
 Four components own all the loops. Every other component is *called* by one of them at a fixed point.
 
-This table and the trees answer different questions. A tree's `( )` names who **changes the state** at a level. This table names who **runs the loop**. A component can do one without the other: the Runner runs loops but changes no state itself, while the Encoder changes the Dataset but runs no loop.
+In the trees, a level's `( )` lists every component that acts at that level: the owner, whose loop at that level repeats the level beneath, and any components it calls there. An owner therefore appears at each level whose loop it runs.
 
-| Owner | Loops (levels) | Calls |
-|---|---|---|
-| **Driver** | Study → Experiment → Run | Encoder, once per experiment |
-| **Runner** | Generation → Individual (train); Individual alone (infer) | Selector and Mutator, after each generation's individuals are measured |
-| **Tester** (train) / **Inferrer** (infer) | Example → Round | Kernel and Decoder every round; Trainer between examples |
-| **Kernel** | Tick → Instruction | none; it evaluates Nands directly |
+| Owner | Sits at | Repeats | Calls |
+|---|---|---|---|
+| **Driver** | Study, Experiment | Experiments, Runs | Encoder, once per experiment |
+| **Runner** | Run, Generation (train); Run (infer) | Generations, Individuals (train); Individuals (infer) | Selector and Mutator, after each generation's individuals are measured |
+| **Tester** (train) / **Inferrer** (infer) | Individual, Example | Examples, Rounds | Trainer between examples; Decoder every round |
+| **Kernel** | Round, Tick | Ticks, Instructions | none; it evaluates Nands directly |
 
 The levels are defined below, top to bottom, for training.
 
@@ -93,13 +93,12 @@ Three further things vary between experiments, around the program rather than wi
 
 ## Rules the structure follows
 
-1. **Each level is one function**, so the loop tree is also the call graph, and the top of the training program is a few nested loops in one function.
-2. **Only components named for an action own loops.** A component may own several adjacent levels, provided any level that is sequential under one configuration and parallel under another has exactly one place where that is declared. Data is read and written by components, never in charge of a loop.
-3. **Name the owner, not the state.** If the best name available for a component is a noun for the state it tracks, then the loop belongs to whoever owns that state and the component should not exist. A component whose whole content is a loop is not a responsibility, and an awkward component name is usually evidence of a misplaced loop rather than a wording problem.
-4. **Configuration flows down.** The experiment file is read once, at Experiment, and nothing below may change it.
-5. **Results flow up one level at a time, unsummarised, until the Selector.** Per-example records reach the Selector intact. How they are combined into one comparison (average error, worst case, ticks used, genome size, ...) is a selection decision, so only the Selector makes it.
-6. **Memory is allocated at the level that owns it and written below it.** The Arena is allocated once per individual, cleared once per example and written once per tick.
-7. **A genome is charged for the Nands that do something, not for all of them.** By the README's reverse-index writeback, a Nand whose output wire is already driven by an older (lower-index) Nand never takes effect. Such Nands cost nothing and can accumulate until a later change makes one useful, so counting them against a genome's size would remove that reserve.
+1. **One level, one function.** Each level of a tree is one function, containing that level's loop. The trees are therefore the program's call graph, and the top of train is a few nested loops in one function.
+2. **Only components that act run loops.** Data (Dataset, Arena, Genome) is read and written, never in charge of a loop. One component may run the loops of several adjacent levels. Where a loop runs in parallel in some configurations and in order in others, that choice is made in exactly one place.
+3. **Every component does something besides looping.** If the only name a proposed component can be given describes data it would track (e.g. "Clock" for a tick count), it should not exist: its loop belongs to the component that owns that data.
+4. **Configuration only flows down.** It is read once from the experiment file, at Experiment, and no level below changes it.
+5. **Results only flow up,** one level at a time, uncombined until they reach the Selector. Only the Selector decides how per-example results add up to a comparison between individuals.
+6. **Memory belongs to one level and is used below it.** The Arena is created once per individual, cleared once per example and written once per tick.
 
 ## How training uses the hardware
 
