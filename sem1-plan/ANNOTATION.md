@@ -1,10 +1,10 @@
-# Context Annotation (draft 3)
+# Context Annotation (draft 4)
 
 To be appended to `ARCHITECTURE.md`. It assumes the reader has read the README and nothing else. Terms the README defines are used as it defines them: Nand, genome, memory space, wire, the input/ready/output/internal regions, tick, Nand index order. Every other term is defined here before it is used.
 
 ## What the program does
 
-nand-evolver searches for genomes (graphs of Nands) that solve a task. It does this by evolution: it keeps a collection of genomes, measures how well each one solves the task, keeps the better ones and makes randomly changed copies of them, and repeats. A genome found this way can then be run on its own, outside the search.
+nand-evolver searches for genomes (graphs of Nands) that solve a task. A **task** is one problem to be solved: its raw data, how that data is written onto wires, how wire values are read back as answers, and which answers count as correct. The search works by evolution: it keeps a collection of genomes, measures how well each one solves the task, keeps the better ones and makes randomly changed copies of them, and repeats. A genome found this way can then be run on its own, outside the search.
 
 So there are two programs:
 - **train** performs the search (the Training Loop Tree).
@@ -36,12 +36,12 @@ The levels are defined below, top to bottom, for training.
 ## The levels
 
 **Study**. A set of experiments meant to be compared with each other, for example the lines of one plot. The **Driver** is a Python tool, separate from the C programs. For each experiment it builds the programs, runs them, collects their output and writes a report.
-- `# Source`: the **Source** is the task's raw data, e.g. images and their correct labels.
+- `# Source`: the **Source** is the task's raw data, e.g. images and their **labels** (the correct answers).
 
 **Experiment**. One fully specified search, described by one **experiment file**. That file is the **Config**: it fixes the task, the encoding, every algorithm choice and every numeric setting.
 - Choices that change the program's structure are compiled in, so each combination of them is its own binary. Numeric settings are read at start-up.
 - The **Encoder** runs once per experiment and converts the Source into the **Dataset**: a list of examples (defined below) expressed as wire values. It produces both the input values to write into the input region and, from the labels, the expected output values.
-- Labels are encoded here because the Encoder is the only component that reads the Source. The split between the two codec components is therefore by **direction**: the Encoder turns world values into wires, the Decoder turns wires back into world values. The consequence is that the output layout is *shared* — the Encoder writes expected values in it, the Decoder reads produced values from it — so the two must be checked against each other rather than separately.
+- Labels are encoded here because the Encoder is the only component that reads the Source. The split between the Encoder and Decoder is therefore by **direction**: the Encoder turns world values into wires, the Decoder turns wires back into world values. The consequence is that the output layout is *shared* — the Encoder writes expected values in it, the Decoder reads produced values from it — so the two must be checked against each other rather than separately. The **output layout** is the convention for representing an answer on the output wires, e.g. one wire per possible digit, with the right digit's wire set.
 - The Dataset is never changed after this, so every level below can read it freely without copying it.
 
 **Run**. One complete search with one random seed. The Driver repeats it per experiment to measure how much results vary between seeds.
@@ -60,11 +60,11 @@ The levels are defined below, top to bottom, for training.
 **Example**. One problem from the Dataset: a sequence of one or more rounds, with the expected output for each round that is graded.
 - XOR is one round per example. An MNIST image fed one pixel row at a time is 28 rounds, where only the last is graded.
 - The Arena is cleared at the start of each example and kept across its rounds. That's how a genome can remember earlier rounds.
-- The **Tester** loops over the examples it was given and their rounds. It writes each round's input values into the input region, has the Kernel run the genome, and on graded rounds compares the outputs with the expected values. It records each example's result (how wrong, and how many ticks it took) and passes the records up unchanged.
+- The **Tester** loops over the examples it was given and their rounds. It writes each round's input values into the input region, has the Kernel run the genome, and on graded rounds compares the outputs with the expected values. It records each example's result: how wrong it was (its **error**) and how many ticks it took and passes the records up unchanged.
 
 **Round**. One exchange: input values are written, the genome runs until it signals that its output is ready, and the output region is read. Per the README, "ready" means the genome drives wire `1+i` low. A round also ends after a configured maximum number of ticks, so a genome that never signals still produces a result.
 - That maximum is a ceiling on how deep a genome's logic can be, not merely a safety valve. A signal needs one tick per layer it passes through, so a solution needing more layers than the limit allows cannot be found at all — and charging a genome for the ticks it used also charges it for depth.
-- After each round, the **Decoder** reads the output region and turns it into the task's answer (e.g. a class number). It also reports which output wires were wrong and how much each one matters, which the Mutator and Trainer can use to choose changes.
+- After each round, the **Decoder** reads the output region and turns it into the task's answer (e.g. which of ten digits an image shows). It also reports which output wires were wrong and how much each one matters, which the Mutator and Trainer can use to choose changes.
 - Each output layout declares how its error can be attributed. Either comparing produced wires with expected wires is enough to say which are wrong and which way to move them — true when one wire means one class, or when a number is written as a count of set wires — or a wrong high-order wire and wrong low-order wires cannot be corrected independently, as in a binary number, in which case every example must be read back separately at a cost.
 - The Tester tells the Decoder which rounds to skip (ungraded rounds), so the Decoder never decides what is graded. That cost is why skipping matters: an MNIST image fed as 28 rounds grades one of them.
 - Because the Encoder and Decoder share the output layout, one writing it and the other reading it, they have to be checked as a pair: encoding a label and then decoding the result must return that label. Neither component can be checked on its own.
@@ -97,7 +97,7 @@ Three further things vary around the program rather than within it: the **task**
 4. **Configuration flows down.** The experiment file is read once, at Experiment, and nothing below may change it.
 5. **Results flow up one level at a time, unsummarised, until the Selector.** Per-example records reach the Selector intact. How they are combined into one comparison (average error, worst case, ticks used, genome size, ...) is a selection decision, so only the Selector makes it.
 6. **Memory is allocated at the level that owns it and written below it.** The Arena is allocated once per individual, cleared once per example and written once per tick.
-7. **A genome is charged for the Nands that do something, not for all of them.** By the README's reverse-index writeback, a Nand whose output wire is already driven by an older Nand never takes effect. Such Nands cost nothing and can accumulate until a later change makes one useful, so counting them against a genome's size would remove that reserve.
+7. **A genome is charged for the Nands that do something, not for all of them.** By the README's reverse-index writeback, a Nand whose output wire is already driven by an older (lower-index) Nand never takes effect. Such Nands cost nothing and can accumulate until a later change makes one useful, so counting them against a genome's size would remove that reserve.
 
 ## How training uses the hardware
 
@@ -108,4 +108,4 @@ In training, each wire is stored as one 64-bit word rather than one bit, as the 
 - Whether evolution is best expressed as one component or as Selector + Mutator.
 - Whether a component always sits at the level where all of its inputs exist.
 - Whether many Encoders can share one Decoder.
-- Whether the shared output layout should be stated once somewhere both codec components read it, given that they are now checked as a pair rather than separately.
+- Whether the shared output layout should be stated once somewhere both the Encoder and Decoder read it, given that they are now checked as a pair rather than separately.
