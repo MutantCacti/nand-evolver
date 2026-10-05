@@ -157,3 +157,37 @@ Open: is one agent owning several adjacent loops (Tester: Examples, Rounds, Tick
 3. **`# Arena` at Generation:** Generation's executors (Selector, Mutator) vary Genome, not Arena.
 4. **Infer tree has no Decoder,** but infer decodes every round. It belongs at Round under the Inferrer (or wherever the Inferrer's loop sits).
 5. **DECISIONS.md round-3 Settled** still says attribution happens "at the output boundary, once per round". It should become "after the Example, on graded rounds".
+
+### Round 2, merged with THREAD's review (2026-10-05)
+
+THREAD's commentary arrived on wire. What survives, folded here:
+
+**Agreed by both:**
+- Notes 1 and 2, Q5.3 (the Selector reduces), and the **Evolver** at Run → Generations.
+- **`epoch` is retired.** The lookup key is `(seed, generation, example)`, so generation subsumes epoch. No plan document still uses it. The old `task.h` cursor/epoch semantics should not carry into 2A.
+- **Evaluator, not Dispatcher,** for Generation → Individuals. Naming a component after its parallelism mechanism puts an execution concern into a structural name.
+- **Tester owns Individual → Examples** and calls the Trainer between examples (individual mode). The Trainer joins the called-at-a-point group, which keeps the Tester/Inferrer symmetry between the two trees.
+- **Reading rule for the trees:** they are accurate *across variations*. A level lists any state that *any* variation varies there, not what P1 varies (hence Arena at Generation for inheritance). Worth stating in ARCHITECTURE.md.
+- **Infer's Decoder belongs at Round.** In infer the world consumes each output as it appears, and there is no grading schedule to wait for. Train decodes after the Example, on graded rounds. That asymmetry is the strongest reason for two trees.
+- Q5.5's arrow-into-box notation is data rule 1 expressed as notation. Keep it deliberately.
+
+**The noun count (THREAD).** There are eight loops. The agentive candidates for loop ownership are Driver, Evolver, Trainer, Tester and Kernel, since Encoder, Selector, Mutator and Decoder are called at a point. Strictly one loop per agent therefore needs three new nouns.
+
+**May one agent own several adjacent loops? A criterion with a cost (DELTA, refining THREAD).** THREAD argues no: the declared parallel/serial partition needs per-level anchors, and burying the Examples loop inside a multi-loop Tester would make individual mode (Examples serial) impossible to declare. THREAD's own proposed fusions (Instruction into Tick, Study + Experiment into the Driver, Round + Tick in a Sequencer) show the real rule is narrower:
+
+> **A loop needs its own agent if and only if its parallel/serial declaration can vary between variations.**
+
+| Loop | Declaration | Own agent? | Owner |
+|---|---|---|---|
+| Study → Experiments, Experiment → Runs | execution-level, outside C | no (one tool) | **Driver** (Python) |
+| Run → Generations | always serial | — | **Evolver** |
+| Generation → Individuals | varies (parallel, or 1 at population 1) | **yes** | **Evaluator** |
+| Individual → Examples | varies (serial in individual mode) | **yes** | **Tester** (train) / **Inferrer** (infer) |
+| Example → Rounds → Ticks | always serial (handshake, state evolution) | fused | **Sequencer** (new): present input, tick to ready, latch |
+| Tick → Instructions | always parallel; the vectorisation site | fused into Tick | **Kernel** = one tick (evaluate all, write back by seniority); the NAND is an inlined expression |
+
+- **Result:** one new noun (Sequencer) plus Evaluator, instead of three. The bottom of the tree stops putting a function boundary at the vectorisation site, which is "SIMD without being designed for it" again.
+- **Cost of the rule:** if a future variation makes an always-serial loop parallel (e.g. parallel rounds for a streaming variant), its fused owner must split. The rule names that cost up front.
+
+**Remaining inconsistency in ARCHITECTURE.md @ 80f64eb (both):**
+- `Experiment (Encoder)` puts a non-iterating establisher in executor position. Under the table, Experiment's loop is the Driver's, and the Encoder is called once before it.
