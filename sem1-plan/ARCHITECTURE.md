@@ -76,7 +76,7 @@ Top to bottom, for training.
 - Labels are encoded here because the Encoder is the only component that reads the Source. The split between the Encoder and Decoder is therefore by **direction**: the Encoder turns world values into wires, the Decoder turns wires back into world values. The consequence is that the output layout is *shared* — the Encoder writes expected values in it, the Decoder reads produced values from it — so the two must be checked against each other rather than separately. The **output layout** is the convention for representing an answer on the output wires, e.g. one wire per possible digit, with the right digit's wire set.
 - The Dataset is never changed after this, so every level below can read it freely without copying it.
 
-**Run**. One complete search from one seed. The Driver repeats it per experiment to measure how much results vary between seeds. Only train has runs.
+**Run**. One complete search from one seed. The Driver repeats it per experiment to measure how much results vary between seeds. Only train has runs. The **Evolver** carries out a run, generation after generation. When the run ends, it writes the best genome it found as a **model file**: the genome, plus the identity and settings of the Encoder and Decoder it was trained with. That file is training's only output and the deployed program's only input.
 - `# Rng`: the random seed. Every random choice anywhere below is computed from the seed plus its position, e.g. which example is used as the 40th example of generation 12. There is no stored random state that code shares or advances, so a run gives the same result however its work is divided between threads.
 - For the same reason, examples are never shuffled into a stored order. The example to use is computed from (seed, generation, position within the generation).
 
@@ -108,7 +108,7 @@ Top to bottom, for training.
 
 ## The deployed program
 
-Its only input is a **model file**: the genome, plus the identity and settings of the Encoder and Decoder it was trained with. Without those the genome's bits cannot be interpreted.
+Its only input is the model file written by the Evolver at the end of a training run. Without those the genome's bits cannot be interpreted.
 
 - The **Deployment** level is one model running for as long as it is switched on. Its Arena is created once, at start-up, because there is no Individual level to own it.
 - The **Encoder** runs per round here, on live input, rather than once over a stored Dataset.
@@ -123,11 +123,11 @@ Evaluating several finished genomes against held-out examples is the **Driver's*
 ```
 Experiment
 ┌────────────────────────────────────────────────────────────────────────────────────────────┐
-│   ┌─────────┐     ┌─────────┐                                           ┌────────────┐     │
-│   │ Encoder ├────>│ Dataset │                                           │ Model file │     │
-│   └─────────┘     └────┬────┘                                           └────────────┘     │
-│ Run                    │                                                      ↑            │
-│ ┌──────────────────────↓──────────────────────────────────────────────────────┴──────────┐ │
+│   ┌─────────┐     ┌─────────┐                                                              │
+│   │ Encoder ├────>│ Dataset │                                                              │
+│   └─────────┘     └────┬────┘                                                              │
+│ Run                    │                                                                   │
+│ ┌──────────────────────↓─────────────────────────────────────────────────────────────────┐ │
 │ │                      │                        ┌─────┐                                  │ │
 │ │                      │                        │ Rng │                                  │ │
 │ │                      │                        └──┬──┘                                  │ │
@@ -159,9 +159,15 @@ Experiment
 │ │ │ └─────────────┼─────────────────────────────────────────────────────┼────────────┘ │ │ │
 │ │ │               │      ┌─────────┐            ┌──────────┐            │              │ │ │
 │ │ │               └──────┤ Mutator │<───────────┤ Selector │<───────────┘              │ │ │
-│ │ │                      └─────────┘            └──────────┘                           │ │ │
-│ │ └────────────────────────────────────────────────────────────────────────────────────┘ │ │
-│ └────────────────────────────────────────────────────────────────────────────────────────┘ │
+│ │ │                      └─────────┘            └────┬─────┘                           │ │ │
+│ │ └──────────────────────────────────────────────────┼─────────────────────────────────┘ │ │
+│ │                                               ┌────↓────┐                              │ │
+│ │                                               │ Evolver │                              │ │
+│ │                                               └────┬────┘                              │ │
+│ └────────────────────────────────────────────────────┼───────────────────────────────────┘ │
+│                                               ┌──────↓─────┐                               │
+│                                               │ Model file │                               │
+│                                               └────────────┘                               │
 └────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
