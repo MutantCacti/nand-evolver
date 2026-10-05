@@ -12,18 +12,6 @@ So there are two programs:
 - **train** performs the search.
 - **infer** is the product: one finished genome, running on input from the world.
 
-## Reading the loop trees
-
-Each line of a tree is a **level**. A level is one loop: it repeats the level beneath it many times (`*`).
-- `( )` names the components that do the work at that level. Each is a piece of code with one job, named for what it does.
-- `#` names the state (data) that the work at that level can change.
-
-Data is never a loop owner. A name for data (Dataset, Arena) never appears in `( )`.
-
-A level's `( )` lists every component that acts there: the owner, whose loop at that level repeats the level beneath, and any components it calls. An owner therefore appears at each level whose loop it runs.
-
-A level lists everything that *any* configuration of the program might change there, not only what the simplest configuration changes. For example, `# Arena` appears at Generation because one configuration lets a new genome start from a copy of its parent's memory space, even though the simplest configuration starts it empty.
-
 ## Loop Trees
 
 Identify the series of nested loops that encapsulate stages of program execution.
@@ -31,6 +19,10 @@ Identify the series of nested loops that encapsulate stages of program execution
 `*` = Loops over many
 `(` = Executor that varies state
 `#` = State varied
+
+Each line of a tree is a **level**, and each level is one loop. A level's `( )` lists every component that acts there: the level's **owner**, whose loop repeats the level beneath, and the components it calls. An owner therefore appears at every level whose loop it runs.
+
+A level's `#` lists everything that *any* configuration of the program might create or change there, not only what the simplest configuration does. For example, `# Arena` appears at Generation because one configuration lets a new genome start from a copy of its parent's memory space, even though the simplest configuration starts it empty.
 
 ### Training
 
@@ -130,41 +122,47 @@ Evaluating several finished genomes against held-out examples is the **Driver's*
 
 ```
 Experiment
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│                        ┌─────────┐                                                   │
-│                        │ Encoder │                                                   │
-│                        └────┬────┘                                                   │
-│ Run                         │                                                        │
-│ ┌───────────────────────────↓──────────────────────────────────────────────────────┐ │
-│ │                      ┌─────────┐                ┌─────┐                          │ │
-│ │                      │ Dataset │                │ Rng │                          │ │
-│ │                      └────┬────┘                └──┬──┘                          │ │
-│ │ Generation                │                        │                             │ │
-│ │ ┌─────────────────────────↓────────────────────────↓───────────────────────────┐ │ │
-│ │ │ Individual                                                                   │ │ │
-│ │ │ ┌──────────────────────────────────────────────────────────────────────────┐ │ │ │
-│ │ │ │ Example                                                                  │ │ │ │
-│ │ │ │ ┌──────────────────────────────────────────────────────────────────────┐ │ │ │ │
-│ │ │ │ │ Round                                                                │ │ │ │ │
-│ │ │ │ │ ┌────────────────────────────────────────────────────┐               │ │ │ │ │
-│ │ │ │ │ │ Tick                                               │               │ │ │ │ │
-│ │ │ │ │ │ ┌───────────────────────────────────┐              │               │ │ │ │ │
-│ │ │ │ │ │ │ ┌────────┐  ┌────────┐  ┌───────┐ │  ┌─────────┐ │  ┌──────────┐ │ │ │ │ │
-│ │ │ │ │ │ │ │ Genome ├─>│ Kernel ├─>│ Arena ├─┼─>│ Decoder ├─┼─>│ Verifier │ │ │ │ │ │
-│ │ │ │ │ │ │ └────────┘  └────────┘  └───────┘ │  └────┬────┘ │  └────┬─────┘ │ │ │ │ │
-│ │ │ │ │ │ └─────↑─────────────────────────────┘       │      │       │       │ │ │ │ │
-│ │ │ │ │ └───────┼─────────────────────────────────────┼──────┘       │       │ │ │ │ │
-│ │ │ │ └─────────┼─────────────────────────────────────┼──────────────┼───────┘ │ │ │ │
-│ │ │ │           │      ┌─────────┐                    │              │         │ │ │ │
-│ │ │ │           ├──────┤ Trainer │<───────────────────┴──────────────┤         │ │ │ │
-│ │ │ │           │      └─────────┘                                   │         │ │ │ │
-│ │ │ └───────────┼────────────────────────────────────────────────────┼─────────┘ │ │ │
-│ │ │             │      ┌─────────┐              ┌──────────┐         │           │ │ │
-│ │ │             └──────┤ Mutator │<─────────────┤ Selector │<────────┘           │ │ │
-│ │ │                    └─────────┘              └──────────┘                     │ │ │
-│ │ └──────────────────────────────────────────────────────────────────────────────┘ │ │
-│ └──────────────────────────────────────────────────────────────────────────────────┘ │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────────┐
+│   ┌─────────┐     ┌─────────┐                                           ┌────────────┐     │
+│   │ Encoder ├────>│ Dataset │                                           │ Model file │     │
+│   └─────────┘     └────┬────┘                                           └────────────┘     │
+│ Run                    │                                                      ↑            │
+│ ┌──────────────────────↓──────────────────────────────────────────────────────┴──────────┐ │
+│ │                      │                        ┌─────┐                                  │ │
+│ │                      │                        │ Rng │                                  │ │
+│ │                      │                        └──┬──┘                                  │ │
+│ │ Generation           │                           │                                     │ │
+│ │ ┌────────────────────┼───────────────────────────↓───────────────────────────────────┐ │ │
+│ │ │ Individual         │                                                               │ │ │
+│ │ │ ┌──────────────────┼─────────────────────────────────────────────────────────────┐ │ │ │
+│ │ │ │                  │            ┌─────────┐                                      │ │ │ │
+│ │ │ │                  └───────────>│ Harness │                                      │ │ │ │
+│ │ │ │                               └────┬────┘                                      │ │ │ │
+│ │ │ │ Example                            │                                           │ │ │ │
+│ │ │ │ ┌──────────────────────────────────┼─────────────────────────────────────────┐ │ │ │ │
+│ │ │ │ │ Round                            │                                         │ │ │ │ │
+│ │ │ │ │ ┌────────────────────────────────┼───────────────────────────────────────┐ │ │ │ │ │
+│ │ │ │ │ │ Tick                           │                                       │ │ │ │ │ │
+│ │ │ │ │ │ ┌──────────────────────────────┼────────┐                              │ │ │ │ │ │
+│ │ │ │ │ │ │ ┌────────────────────────────┼──────┐ │                              │ │ │ │ │ │
+│ │ │ │ │ │ │ │                            │      │ │                              │ │ │ │ │ │
+│ │ │ │ │ │ │ │ ┌────────┐  ┌────────┐  ┌──↓────┐ │ │   ┌─────────┐  ┌──────────┐  │ │ │ │ │ │
+│ │ │ │ │ │ │ │ │ Genome ├─>│ Kernel ├─>│ Arena ├─┼─┼──>│ Decoder ├─>│ Verifier │  │ │ │ │ │ │
+│ │ │ │ │ │ │ │ └────────┘  └────────┘  └───────┘ │ │   └────┬────┘  └────┬─────┘  │ │ │ │ │ │
+│ │ │ │ │ │ │ └─────↑─────────────────────────────┘ │        │            │        │ │ │ │ │ │
+│ │ │ │ │ │ └───────┼───────────────────────────────┘        │            │        │ │ │ │ │ │
+│ │ │ │ │ └─────────┼────────────────────────────────────────┼────────────┼────────┘ │ │ │ │ │
+│ │ │ │ └───────────┼────────────────────────────────────────┼────────────┼──────────┘ │ │ │ │
+│ │ │ │             │      ┌─────────┐                       │            │            │ │ │ │
+│ │ │ │             ├──────┤ Trainer │<──────────────────────┴────────────┤            │ │ │ │
+│ │ │ │             │      └─────────┘                                    │            │ │ │ │
+│ │ │ └─────────────┼─────────────────────────────────────────────────────┼────────────┘ │ │ │
+│ │ │               │      ┌─────────┐            ┌──────────┐            │              │ │ │
+│ │ │               └──────┤ Mutator │<───────────┤ Selector │<───────────┘              │ │ │
+│ │ │                      └─────────┘            └──────────┘                           │ │ │
+│ │ └────────────────────────────────────────────────────────────────────────────────────┘ │ │
+│ └────────────────────────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Configurations
