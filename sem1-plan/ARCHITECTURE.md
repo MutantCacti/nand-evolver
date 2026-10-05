@@ -14,12 +14,12 @@ Identify the series of nested loops that encapsulate stages of program execution
 
 ```
 Study (Driver)                                          # Source
-└─* Experiment (Encoder)                                # Config, Dataset
+└─* Experiment (Driver, Encoder)                        # Config, Dataset
     └─* Run (Runner)                                    # Rng
-        └─* Generation (Selector, Mutator)              # Genome, Arena
-            └─* Individual (Trainer)                    # Genome, Arena
-                └─* Example (Verifier, Decoder)         # Arena
-                    └─* Round                           # Arena
+        └─* Generation (Runner, Selector, Mutator)      # Genome, Arena
+            └─* Individual (Tester, Trainer)            # Genome, Arena
+                └─* Example (Tester)                    # Arena
+                    └─* Round (Decoder)                 # Arena
                         └─* Tick                        # Arena
                             └─* Instruction (Kernel)    # Arena
 ```

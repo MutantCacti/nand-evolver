@@ -24,6 +24,8 @@ A level lists everything that *any* configuration of the program might change th
 
 Four components own all the loops. Every other component is *called* by one of them at a fixed point.
 
+This table and the trees answer different questions. A tree's `( )` names who **changes the state** at a level. This table names who **runs the loop**. A component can do one without the other: the Runner runs loops but changes no state itself, while the Encoder changes the Dataset but runs no loop.
+
 | Owner | Loops (levels) | Calls |
 |---|---|---|
 | **Driver** | Study → Experiment → Run | Encoder, once per experiment |
