@@ -15,7 +15,7 @@ Identify the series of nested loops that encapsulate stages of program execution
 ```
 Study (Driver)                                          # Source
 └─* Experiment (Encoder)                                # Config, Dataset
-    └─* Run                                             # Rng
+    └─* Run (Runner)                                    # Rng
         └─* Generation (Selector, Mutator)              # Genome, Arena
             └─* Individual (Trainer)                    # Genome, Arena
                 └─* Example (Verifier, Decoder)         # Arena
@@ -29,7 +29,7 @@ Study (Driver)                                          # Source
 ```
 Study (Driver)                                          # Source
 └─* Experiment (Encoder)                                # Config, Dataset
-    └─* Run
+    └─* Run (Runner)
         └─* Individual (Inferrer)                       # Arena
             └─* Example (Decoder)                       # Arena
                 └─* Round                               # Arena
