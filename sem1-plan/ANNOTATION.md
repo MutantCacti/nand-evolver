@@ -27,7 +27,7 @@ Four components own all the loops. Every other component is *called* by one of t
 | Owner | Loops (levels) | Calls |
 |---|---|---|
 | **Driver** | Study → Experiment → Run | Encoder, once per experiment |
-| **Evolver** | Generation → Individual | Selector and Mutator, after each generation's individuals are measured |
+| **Runner** | Generation → Individual | Selector and Mutator, after each generation's individuals are measured |
 | **Tester** (train) / **Inferrer** (infer) | Example → Round | Kernel and Decoder every round; Trainer between examples |
 | **Kernel** | Tick → Instruction | none; it evaluates Nands directly |
 
@@ -40,19 +40,19 @@ The levels are defined below, top to bottom, for training.
 
 **Experiment**. One fully specified search, described by one **experiment file**. That file is the **Config**: it fixes the task, the encoding, every algorithm choice and every numeric setting.
 - Choices that change the program's structure are compiled in, so each combination of them is its own binary. Numeric settings are read at start-up.
-- The **Encoder** runs once per experiment and converts the Source into the **Dataset**: a list of examples (defined below) expressed as wire values. It writes the input values for the input region, and fills in each graded round's expected output values by calling the Decoder's label-to-wires function.
-- That function belongs to the Decoder, not the Encoder, even though labels come from the Source and the work happens here. Expected values must use exactly the layout the Decoder later reads back; if the two lived in separate components, that layout would be defined twice and could drift apart. The Encoder owns the **input** region, the Decoder owns the **output** region in both directions.
+- The **Encoder** runs once per experiment and converts the Source into the **Dataset**: a list of examples (defined below) expressed as wire values. It produces both the input values to write into the input region and, from the labels, the expected output values.
+- Labels are encoded here because the Encoder is the only component that reads the Source. The split between the two codec components is therefore by **direction**: the Encoder turns world values into wires, the Decoder turns wires back into world values. The consequence is that the output layout is *shared* — the Encoder writes expected values in it, the Decoder reads produced values from it — so the two must be checked against each other rather than separately.
 - The Dataset is never changed after this, so every level below can read it freely without copying it.
 
 **Run**. One complete search with one random seed. The Driver repeats it per experiment to measure how much results vary between seeds.
 - `# Rng`: the random seed. Every random choice anywhere below is computed from the seed plus its position, e.g. which example is used as the 40th example of generation 12. There is no stored random state that code shares or advances, so a run gives the same result however its work is divided between threads.
 - For the same reason, examples are never shuffled into a stored order. The example to use is computed from (seed, generation, position within the generation).
 
-**Generation**. One step of evolution, looped by the **Evolver**. The **population** (the current collection of individuals, defined next) is measured; then:
+**Generation**. One step of evolution, looped by the **Runner**. The **population** (the current collection of individuals, defined next) is measured; then:
 - the **Selector** compares the results and chooses which individuals become parents;
 - the **Mutator** makes the next population by copying parents' genomes with random changes, e.g. adding a Nand or rewiring an index.
 
-**Individual**. One genome and its own memory space, which the code calls the **Arena**. The Evolver hands each individual to a Tester, together with the range of examples to measure it on.
+**Individual**. One genome and its own memory space, which the code calls the **Arena**. The Runner hands each individual to a Tester, together with the range of examples to measure it on.
 - Individuals never read each other's state, so they can be measured in parallel.
 - How the examples are divided is decided in one place, outside the Tester: in the simplest configuration, every (individual, example) pair is a separate piece of work.
 - The **Trainer** is optional. When enabled, it changes the individual's genome *during* measurement, between examples, using evidence from the results so far. Its examples must then run in order, so the Tester is handed all of them at once.
@@ -67,7 +67,7 @@ The levels are defined below, top to bottom, for training.
 - After each round, the **Decoder** reads the output region and turns it into the task's answer (e.g. a class number). It also reports which output wires were wrong and how much each one matters, which the Mutator and Trainer can use to choose changes.
 - Each output layout declares how its error can be attributed. Either comparing produced wires with expected wires is enough to say which are wrong and which way to move them — true when one wire means one class, or when a number is written as a count of set wires — or a wrong high-order wire and wrong low-order wires cannot be corrected independently, as in a binary number, in which case every example must be read back separately at a cost.
 - The Tester tells the Decoder which rounds to skip (ungraded rounds), so the Decoder never decides what is graded. That cost is why skipping matters: an MNIST image fed as 28 rounds grades one of them.
-- Because the Decoder both writes expected values and reads produced ones, it is the only component holding a reversible pair. Encoding a label and decoding it again must return that label, which tests the Decoder on its own.
+- Because the Encoder and Decoder share the output layout, one writing it and the other reading it, they have to be checked as a pair: encoding a label and then decoding the result must return that label. Neither component can be checked on its own.
 
 **Tick** and **Instruction**. A tick is as defined in the README: every Nand is evaluated against the current memory space, then the results are written back in reverse Nand index order. An **instruction** is the evaluation of one Nand.
 - The **Kernel** runs ticks until the ready signal or the tick limit, and counts them. It is the only component that touches individual Nands.
@@ -75,7 +75,7 @@ The levels are defined below, top to bottom, for training.
 
 ## The inference tree
 
-infer has no search, so it has no Generation level and no Selector, Mutator, Trainer or Tester. The Driver hands the finished genome to the **Inferrer**, which runs examples from the outside world. It writes inputs, runs rounds through the Kernel, and passes every round's output through the Decoder to whoever needs it.
+infer has no search, so it has no Generation level and no Selector, Mutator, Trainer or Tester. The Runner hands the finished genome to the **Inferrer**, which runs examples from the outside world. It writes inputs, runs rounds through the Kernel, and passes every round's output through the Decoder to whoever needs it.
 
 A finished genome is saved as a **model file**: the genome plus the identity and settings of the Encoder and Decoder it was trained with. train and infer must share the Kernel, Encoder and Decoder, or the saved genome would mean something different in each.
 
@@ -108,4 +108,4 @@ In training, each wire is stored as one 64-bit word rather than one bit, as the 
 - Whether evolution is best expressed as one component or as Selector + Mutator.
 - Whether a component always sits at the level where all of its inputs exist.
 - Whether many Encoders can share one Decoder.
-- Whether **Encoder** and **Decoder** are the right names. The two are split by *which region they own* — input versus output — while their names describe *direction*. The Decoder owning a label-to-wires function follows from the split but reads against its name, which by rule 3 is a reason to suspect the names rather than the split.
+- Whether the shared output layout should be stated once somewhere both codec components read it, given that they are now checked as a pair rather than separately.
