@@ -1,7 +1,9 @@
-# SYN 1B: Decisions
+# SYN Phase 1: Decisions
 
 Priority-ordered A/B decisions for `mutant`. `^&` marks a constraint from Prof. Jefferson.
 Drafted by DELTA and THREAD. Full text of earlier rounds is in git history (round 1 `43c6dea`, round 2 `6d72d4e`, round 3 `0aa4c47`).
+
+`ARCHITECTURE.md` is the authoritative, self-contained description of the result. This file records the decisions behind it. The Settled sections below have been updated to match the architecture stage (1C), whose own rulings are at the end.
 
 ## Round 1 rulings (mutant, 2026-10-04)
 
@@ -27,20 +29,20 @@ Drafted by DELTA and THREAD. Full text of earlier rounds is in git history (roun
 
 **Clarified:** RNG is Run-level. P1 is exactly as intended.
 
-## Settled (round 1)
+## Settled (round 1, updated by 1C)
 
-- **Hierarchy:** Run → Generations → Individuals (Genome) → Examples (Trial) → **Rounds (Handshake)** → Ticks (Arena) → Instructions (Kernel). Each component varies the loop below it. Rounds loops once when R = 1, so the level is degenerate for XOR/MUX/MNIST but still a level (see item 3).
+- **Hierarchy:** training is Study → Experiment → Run → Generation → Individual → Example → Round → Tick → Instruction. The deployed program is Deployment → Example → Round → Tick → Instruction. Four components own all the loops: **Driver**, **Evolver**, **Harness**, **Kernel** (see 1C). Round loops once when R = 1, so the level is degenerate for XOR/MUX/MNIST but still a level.
 - **Data rules:**
-  1. Config moves down, read-only, written once at Run ^&.
-  2. Results move up one level, reduced at each boundary.
-  3. Buffers are allocated at their owning level and written below it by pointer.
+  1. Config moves down, read-only, written once at Experiment (the experiment file) ^&.
+  2. Results move up one level at a time, **unreduced until the Selector**, which owns every reduction over examples.
+  3. Buffers are allocated at their owning level and written below it by pointer. The Arena is allocated per individual (once at start-up when deployed), cleared per example and written per tick.
 - **One level per function.** `main` is the whole pipeline in a few tiered loops.
-- **Ready is protocol, not task.** Ready initialises to all-ones (active low).
-- **Batching is dataset preparation; Task is scoring.** `score()` measures correctness only. Cost terms (ticks, live gates, address space) travel up and are weighted at selection. Task is not a hierarchy level.
+- **Ready is protocol, not task.** Ready initialises to all-ones (active low). The Kernel reads it.
+- **Batching is dataset preparation, not task.** The **Verifier** (train-only) measures correctness only. Cost terms (ticks, live gates, address space) travel up and are weighted at selection. Task is not a hierarchy level.
 - **Cost prices live gates, not present gates** (protects the inert reservoir under hold + slack).
-- **Example source is indexed, not walked.**
+- **Examples are a pure lookup** on (seed, generation, position within the generation). Nothing prepares or shuffles a stored order, and *epoch* is not a concept.
 - **Determinism under thread count** (same seed, 1 vs N threads, bit-identical) is the test of the declared partition.
-- **Vocabulary:** *active set*, *clocked/multi-rate*, *event-driven*, *quiescent*, *scoring*; no name reused across levels; *round* (below).
+- **Vocabulary:** *active set*, *clocked/multi-rate*, *event-driven*, *quiescent*; no name reused across levels; *round* (below).
 
 ## Round 2 rulings (mutant, 2026-10-04)
 
@@ -53,19 +55,19 @@ Drafted by DELTA and THREAD. Full text of earlier rounds is in git history (roun
 | — | Output encoding | "Of major importance." Becomes round 3 item 1. |
 | — | THREAD's scope rule | A strong **hypothesis**. Watch it. |
 
-## Settled (round 2 additions)
+## Settled (round 2 additions, updated by 1C)
 
-- **Components by level:** Generations: Selector (cross-individual, never reads a genome) + Mutator. Individuals: Trainer (individual mode). The Rounds (Handshake) level stands as written in Settled above.
-- **Variations:** a behavioural tree, protocol (train and run must agree) > algorithm (independent in train or run) > parameter (independent within one execution), with parameters scoped to their algorithm. **World axes:** task, execution (changes time, never results), replicate (seed; lines are means over seeds). Frontier execution (tick modulo, next-index) is protocol.
-- **Rounds:** a round is one input → ready → output handshake. An example is self-contained, always shuffled, always parallelisable, and contains 1..R rounds with declared graded rounds. The arena persists across ticks and rounds and is cleared between examples. Streaming = one long example, chunked for parallelism.
-- **Configuration:** one descriptor per experiment is the single source of truth, and its schema is the taxonomy (binding time derived from tree position). Protocol and algorithm choices are compile-time; builds are cached by their hash (`build/<hash>/`). Parameters are runtime and accepted only from a descriptor whose hash matches the binary. The descriptor is embedded in the binary and emitted with every output. A figure is a set of descriptors.
+- **Components by level:** Run and Generation are owned by the Evolver, which calls the Selector (cross-individual, never reads a genome) and the Mutator after each generation. Individual and Example are owned by the Harness, which calls the Trainer (individual mode) between examples. Round has the Decoder and, in train, the Verifier.
+- **Variations:** a behavioural tree, protocol (train and infer must agree) > algorithm (fixed for one execution of train, absent from infer) > parameter (independent within one execution), with parameters scoped to their algorithm. **World axes:** task (varies between Experiments), execution (changes time, never results; no level), replicate (seed; varies between Runs; lines are means over seeds). Frontier execution (tick modulo, next-index) is protocol, and each scheduling scheme is an alternative Kernel.
+- **Rounds:** a round is one input → ready → output handshake. An example is self-contained, order-independent, always parallelisable, and contains 1..R rounds with declared graded rounds. The arena persists across ticks and rounds and is cleared between examples. Streaming = one long example, chunked for parallelism.
+- **Configuration:** one experiment file per experiment is the single source of truth, and its schema is the taxonomy (binding time derived from tree position). Protocol and algorithm choices are compile-time; builds are cached by their hash (`build/<hash>/`). Parameters are runtime and accepted only from an experiment file whose hash matches the binary. The experiment file is embedded in the binary and emitted with every output. A figure is a set of experiment files. Config is a workbench artifact: the deployed program never sees one.
 
 ## Hypotheses (tracked, not settled)
 
 - **A component lives at the level where its inputs are scoped** (THREAD).
 - **Evolver vs Selector + Mutator:** which factoring survives implementation (mutant).
-
 - **Many encoders share a decoder** (e.g. binary classification) (mutant).
+- **The output layout is stated once,** somewhere both the Encoder and Decoder read it.
 
 ## Round 3 rulings (mutant, 2026-10-04)
 
@@ -79,23 +81,44 @@ Drafted by DELTA and THREAD. Full text of earlier rounds is in git history (roun
 
 THREAD's restatement (round 4): **one authority, not one capability.** In the experiment path, only the driver reads the experiment file. That path carries the reproducibility guarantee; hand invocations sit outside it, and the hash check contains them.
 
-## Settled (round 3 additions)
+## Settled (round 3 additions, updated by 1C)
 
-- **Encoder and Decoder** are separate protocol components shared by train and infer, and many encoders may share a decoder. A task selects them and their params. The exported model pins the genome plus **both** ids and params (the pairing).
-  - **Encoder:** world input → input wires. It has no inverse (nothing ever decodes an input). Its params fix `num_inputs` (e.g. MNIST threshold levels).
-  - **Decoder:** owns both output directions, `encode_target(label) → expected bits` and `decode(bits) → value`, plus attribution (below). Its params fix `num_outputs`. That pair is the only true inverse, so the round-trip test `decode(encode_target(v)) == v` targets the **Decoder alone**.
-- **The decoder side owns error attribution.** It gives each output bit its significance, a discrete gradient at the output boundary that the Trainer and Mutator use as evidence. Each scheme declares its kind:
+- **Encoder and Decoder** are separate protocol components shared by train and infer, split by **direction**: the Encoder turns world values into wires, the Decoder turns wires back into world values. Many encoders may share a decoder. The model file pins the genome plus **both** ids and params (the pairing).
+  - **Encoder:** world input → input wires, and labels → expected output wires (`encode_target`). It is the only component that reads the Source. Its params fix `num_inputs` (e.g. MNIST threshold levels).
+  - **Decoder:** output wires → value, plus attribution (below). Its params fix `num_outputs`.
+  - The two share the output layout, so they are checked as a pair: `decode(encode_target(v)) == v`. Neither can be checked alone.
+- **The Decoder owns error attribution.** It gives each output bit its significance, a discrete gradient at the output boundary that the Trainer and Mutator use as evidence. Each layout declares its kind:
   - **bit-attributable:** `out ^ expected` alone gives which bits are wrong and which way to move (one-hot, thermometer). Stays in bit space, lane-parallel.
   - **value-attributable:** fixes aren't bit-local (binary, Gray, float). Decodes per lane, once per graded round, never per tick.
-- **Call levels:** in train, inputs and labels are encoded once at load. Attribution runs **after the Example**, on its graded rounds only (1C Q3; the Round is ignorant of grading). In infer, encoding runs per round and the Decoder is called from the Example on every round. The kernel never touches either.
-- **Shared declarations, two implementations each:** like the kernel, the Encoder and the Decoder each have a lane and a packed implementation. The shared artifacts are two declarations (scheme, params; plus significance and kind for the Decoder), carried by the model file and pinned by a lane-vs-packed differential test over the whole I/O path. They have different hot-path status: the Encoder's lane form runs once at load, the Decoder's at every round boundary.
+- **Call levels:** in train, the Encoder runs once per experiment (Source → Dataset). The Decoder runs at **Round**, called by the Harness, and the Harness tells it which rounds are graded so it can skip the rest; the Round still never decides grading. When deployed, the Harness calls the Encoder and Decoder on every round. The Kernel never touches either.
+- **Shared declarations, two implementations each:** like the Kernel, the Harness, Encoder and Decoder each have a lane implementation (train) and a packed implementation (infer). The shared artifacts are their declarations, carried by the model file and pinned by a lane-vs-packed differential test over the whole I/O path.
 - **Driver:** a thin Python driver is the experiment's entry point. Its stages are keyed by their inputs:
   1. compile train
-  2. execute train (writes the model file + series)
-  3. compile infer (genome installed into encoder/decoder)
-  4. execute infer + perf/energy
+  2. execute train (the Evolver writes each run's model file + series)
+  3. compile infer (the model file installed into the Harness)
+  4. evaluate infer on held-out examples, comparing answers with labels itself, plus perf/energy
   5. report
 
-  Stages 3–4 run only with a deployment target. A sweep re-runs stage 2 only. Binaries may also take an experiment file directly; the embedded hash check refuses mismatches.
+  A sweep re-runs stage 2 only. Binaries may also take an experiment file directly; the embedded hash check refuses mismatches.
 - **Reports** carry the world axes (thread count, machine, lane width, compiler and flags) next to the experiment file and commit. The experiment file is what was computed; the report is what computed it. Layout: `runs/<hash>/<seed>/`.
 - **Vocabulary:** *experiment*, *experiment file*, **Run** (hierarchy level), `infer/` (binary; `run/` is retired), *workbench*.
+
+## 1C rulings: architecture stage (mutant, 2026-10-05)
+
+| Topic | Ruling |
+|---|---|
+| Data scoping | **Source → Encoder → Dataset**, all at Experiment. The Dataset is read-only below. Run owns only the seed. |
+| Example order | A pure lookup on (seed, generation, position). Nothing prepares an order; *epoch* is retired. |
+| Grading | The Verifier is train-only and called at Round on graded rounds. The Decoder is at Round in both programs; the Harness tells it which rounds to skip. |
+| Reduction | Only the Selector combines per-example results (it's selection policy, and lexicase selection needs them unreduced). Neither the Kernel nor the Harness reduces. |
+| Loop ownership | Only components named for an action own loops. A component may own adjacent levels; a loop whose parallel/serial choice varies is declared in exactly one place. The Driver (tooling) is exempt. |
+| Loop owners | **Driver** (Study, Experiment), **Evolver** (Run, Generation), **Harness** (Individual, Example; Deployment, Example when deployed), **Kernel** (Round, Tick: owns the tick counter, the ready check and the tick limit). |
+| Harness | One component in both programs: drives the README protocol (write inputs, run to ready, read outputs). Replaces the Tester/Inferrer split; the Verifier is what it calls to check. |
+| Example range | The Harness measures the range of examples it is handed. The split (1 example per piece of work in P1, all of them under the Trainer) is decided in one place, outside it. |
+| Deployed program | `infer` is the product: Deployment → Example → Round → Tick → Instruction. No Study, Experiment, Run or Individual; no Config, Selector, Mutator, Trainer or Verifier. Its only input is the model file. |
+| Model file | Written by the **Evolver** at the end of a run: the best genome plus the Encoder and Decoder ids and settings. Training's only output; the deployed program's only input. |
+| Held-out evaluation | The Driver's job, not the product's. Its accuracy is deliberately not the Verifier's error: one drives selection, the other is reported. |
+| Label encoding | Moved from the Decoder to the **Encoder** (it alone reads the Source). |
+| Tree notation | `( )` lists every component acting at a level (its loop owner and what that owner calls there). `#` lists state created or changed at that level by any configuration. |
+| Naming | Invented names must exclude something, and must not name data a component would track. Established field terms win where they exist, so **Run** is kept. Rejected: Tester, Inferrer, Operator, Host, Evaluator, Sequencer, Clock, Runner, Evolution. |
+| Documentation | `ARCHITECTURE.md` is self-contained: it assumes only the README and defines every other term before use. |
