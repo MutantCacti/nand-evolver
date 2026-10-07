@@ -125,6 +125,7 @@ THREAD's restatement (round 4): **one authority, not one capability.** In the ex
 | H | `build/`, `runs/`, `data/` | Git-ignored, but keyed by experiment `name` and meant to be read by developers and agents. |
 | — | Model file | Compiled into infer ("one model is one file"): canonical genome, input/output sizes, room for an initial memory state. |
 | — | Ready | Two independent protocol keys, start value (0/1) and ready value (0/1), giving four combinations. Reference: start 0, ready on 1 (faster early training). The Harness re-initialises ready at the start of every round (option a). README describes ready generically. |
+| — | Ready check | After each tick only, never before the first: every round runs at least one tick, so the start value alone can never answer. |
 | — | Layout | Lane code lives in `train/`, packed code in `infer/`. Codecs, if any, never know whether bits are laned or packed. |
 | — | `config.h` | `#define`s. |
 | — | Canonicalisation | Config-driven, done by train before the model file is written. |
