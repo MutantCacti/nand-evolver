@@ -2,17 +2,15 @@
 
 A summary of the planned nand-evolver data and responsibility structure.
 
-It assumes the reader has read the README and nothing else. Terms the README defines are used as it defines them: Nand, genome, memory space, wire, the input/ready/output/internal regions, tick, Nand index order. Every other term is defined here before it is used.
-
 ## What the program does
 
 nand-evolver searches for genomes (graphs of Nands) that solve a task. A **task** is one problem to be solved: its raw data, how that data is written onto wires, how wire values are read back as answers, and which answers count as correct. The search works by evolution: it keeps a collection of genomes, measures how well each one solves the task, keeps the better ones and makes randomly changed copies of them, and repeats. A genome found this way can then be run on its own, outside the search.
 
 So there are two programs:
 - **train** performs the search.
-- **infer** is the product: one finished genome, running on input from the world.
+- **infer** is a finished genome running on input from the world.
 
-## Loop Trees
+## Responsibility Trees
 
 Identify the series of nested loops that encapsulate stages of program execution.
 
@@ -27,25 +25,25 @@ A level's `#` lists everything that *any* configuration of the program might cre
 ### Training
 
 ```
-Study (Driver)                                          # Source
-└─* Experiment (Driver, Encoder)                        # Config, Dataset
-    └─* Run (Evolver)                                   # Rng
-        └─* Generation (Evolver, Selector, Mutator)     # Genome, Arena
-            └─* Individual (Harness, Trainer)           # Genome, Arena
-                └─* Example (Harness)                   # Arena
+Study (Driver)                                              # Source
+└─* Experiment (Driver, Encoder)                            # Config, Dataset
+    └─* Run (Evolver)                                       # Rng
+        └─* Generation (Evolver, Selector, Mutator)         # Genome, Arena
+            └─* Individual (Harness, Trainer)               # Genome, Arena
+                └─* Example (Harness)                       # Arena
                     └─* Round (Kernel, Decoder, Verifier)   # Arena
-                        └─* Tick (Kernel)               # Arena
-                            └─* Instruction             # Arena
+                        └─* Tick (Kernel)                   # Arena
+                            └─* Instruction                 # Arena
 ```
 
 ### Deployment
 
 ```
-Deployment (Harness)                                    # Arena, Model
-└─* Example (Harness)                                   # Arena
-    └─* Round (Encoder, Kernel, Decoder)                # Arena
-        └─* Tick (Kernel)                               # Arena
-            └─* Instruction                             # Arena
+Deployment (Harness)                        # Arena, Model
+└─* Example (Harness)                       # Arena
+    └─* Round (Encoder, Kernel, Decoder)    # Arena
+        └─* Tick (Kernel)                   # Arena
+            └─* Instruction                 # Arena
 ```
 
 The deployed program has no Study, Experiment, Run or Individual level, because an embedder shipping a model does not loop over experiments, seeds or candidate genomes. Those levels are the workbench's, not the product's.
