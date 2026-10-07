@@ -27,7 +27,7 @@ A level's `#` lists everything that *any* configuration of the program might cre
 ```
 Study (Driver)                                              # Source
 └─* Experiment (Driver)                                     # Config, Dataset
-    └─* Run (Evolver, Exporter, Logger)                     # Rng, Model file, Run log
+    └─* Run (Evolver, Exporter, Logger)                     # Rng, Model, Log
         └─* Generation (Evolver, Selector, Mutator)         # Genome, Arena
             └─* Individual (Harness, Trainer)               # Genome, Arena
                 └─* Example (Harness)                       # Arena
@@ -165,12 +165,12 @@ Experiment
 │ │                                           │ Evolver │<────────────┘                    │ │
 │ │                                           └────┬────┘                                  │ │
 │ │                                           ┌────↓─────┐    ┌────────┐                   │ │
-│ │                                           │ Exporter │    │ Logger │<─ all components  │ │
+│ │                                           │ Exporter │    │ Logger │<─ any component   │ │
 │ │                                           └────┬─────┘    └───┬────┘                   │ │
 │ └────────────────────────────────────────────────┼──────────────┼────────────────────────┘ │
-│                                           ┌──────↓─────┐   ┌────↓────┐                     │
-│                                           │ Model file │   │ Run log │                     │
-│                                           └────────────┘   └─────────┘                     │
+│                                              ┌───↓───┐       ┌──↓──┐                       │
+│                                              │ Model │       │ Log │                       │
+│                                              └───────┘       └─────┘                       │
 └────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
