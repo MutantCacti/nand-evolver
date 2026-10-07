@@ -15,7 +15,7 @@ nand-evolver/
 │   ├── config.py               # experiment file schema (protocol → algorithm → parameters; task, replicate) and its hash
 │   ├── build.py                # protocol + algorithm choices → -D flags → make; embeds the experiment file and the model
 │   ├── sources.py              # raw task data readers (XOR/MUX tables, MNIST files)
-│   ├── dataset.py              # Source → Dataset files: raw data flattened to bits and chunked into rounds, expected bits from raw labels, graded flags; one file per split (train, validation, test), once per experiment
+│   ├── dataset.py              # Source → Dataset files: raw data flattened to bits and chunked into rounds, expected bits from labels by the task's target convention (raw bits for XOR/MUX, one-hot for MNIST), graded flags; one file per split (train, validation, test), once per experiment
 │   ├── evaluate.py             # held-out evaluation: drives infer over stdin/stdout, compares output bits with label bits → accuracy; time, memory, energy
 │   ├── report.py               # run logs + execution axes → report
 │   └── plot.py                 # run logs → figures (e.g. loss vs time per experiment)
@@ -51,7 +51,7 @@ nand-evolver/
 │   │   ├── harness.c           # lane Harness: packing, protocol driving, Verifier/Trainer hooks, graded-round skipping
 │   │   └── kernel.c            # lane Kernel: reference scheme (every Nand, every tick)
 │   └── infer/                  # the product. Packed layout: one bit per wire, one example, canonical Nands
-│       ├── main.c              # Deployment: compiled-in model; per stdin input record, one output record on stdout (always: forced closure); optional reset record clears the Arena
+│       ├── main.c              # Deployment: compiled-in model; per stdin input record, one output record on stdout (always: forced closure)
 │       ├── harness.c           # packed Harness
 │       └── kernel.c            # packed Kernel
 ├── tests/
@@ -82,8 +82,11 @@ nand-evolver/
   - **`config.c`** refuses an experiment file whose hash differs from the binary's.
 - **Execution is not configuration.** Thread count, machine and compiler flags are command-line or build facts, outside the hash, recorded in the run log. Only `evolver.c` reads the thread count.
 - **The model is one file.** `build.py` compiles the model file into `infer`, so a deployed binary carries its model. The model file holds the canonical genome, its input and output sizes, and room for an initial memory state (a child starting from its parent's memory).
-- **infer's interface.** One input record in, one output record out, lock-step. The model always outputs: at the tick limit it emits whatever its output region holds, exactly as training scores it. By default one process runs one example, so restarting clears the Arena; a reset record does the same within one process when an embedder needs it.
-- **Ready polarity is a protocol variant.** A genome that learns the task before learning to signal ready is rewarded by being scored at the tick limit. An active-high ready (models must first learn to hold it low) is a `#define` in the protocol header, so both polarities can be compared.
+- **infer's interface.** One input record in, one output record out, lock-step. The model always outputs: at the tick limit it emits whatever its output region holds, exactly as training scores it. By default one process runs one example, so restarting clears the Arena, and the evaluator starts one process per example. A reset record is the streaming option, noted but not built in P1.
+- **Ready's default is a protocol variant.** What sets the incentive is ready's value in a cleared Arena.
+  - **Default-wait** (today's README: initialised to 1, active-low): an unwired ready never fires, every untrained genome is graded at the tick limit, and nothing pushes it to signal. It learns the task first and ready later, if ever.
+  - **Default-ready**: an unwired ready means ready now, so a genome must do work to hold its answer until its logic has settled. Since a Nand reading a cleared wire outputs 1, "high = ready" makes this the free state.
+  - It is a protocol key (`protocol.ready = default_ready | default_wait`), compiled into both programs, so both are lines on the same figure. Which one is P1's reference is mutant's call.
 - **Two implementations of one interface.** `harness.h` and `kernel.h` declare `lane_*` (in `train/`) and `packed_*` (in `infer/`) so both link into the differential test. The lane Harness reaches the Verifier and Trainer only through hooks, so tests can stub them.
 - **The Driver is stateless; runs keep everything.**
   - `runs/` holds full-detail logs, so scores and plots can be recomputed without re-running.
@@ -101,7 +104,7 @@ nand-evolver/
 
 1. **`train` is one Run per invocation,** following from the Driver owning the loop over Runs.
 2. **Lane and packed are files in `train/` and `infer/`,** because train is always lane and infer always packed. Algorithm and protocol variants are `#if` blocks inside their component's file.
-3. **Tasks are named in the experiment file:** its source, bit widths, rounds per example and graded rounds are keys. There are no task files and no codecs.
+3. **Tasks are named in the experiment file:** its source, bit order, target convention, rounds per example and graded rounds are keys. There are no task files and no input codecs. The only output-side convention is how a label becomes expected bits, which is a function in `dataset.py` that `evaluate.py` inverts.
 4. **Error and attribution are bitwise.** With no codec, expected outputs are raw label bits, so the Verifier and Trainer need nothing but `out ^ expected`.
 5. **Headers only where shared:** `core/*.h` for both programs, and `train/train.h` for train's components and the tests. Private functions are `static`.
 
