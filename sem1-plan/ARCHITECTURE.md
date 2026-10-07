@@ -27,7 +27,7 @@ A level's `#` lists everything that *any* configuration of the program might cre
 ```
 Study (Driver)                                              # Source
 └─* Experiment (Driver)                                     # Config, Dataset
-    └─* Run (Evolver)                                       # Rng
+    └─* Run (Evolver, Exporter, Logger)                     # Rng, Model file, Run log
         └─* Generation (Evolver, Selector, Mutator)         # Genome, Arena
             └─* Individual (Harness, Trainer)               # Genome, Arena
                 └─* Example (Harness)                       # Arena
@@ -55,7 +55,7 @@ Four components own all the loops. Every other component is *called* by one of t
 | Owner | Sits at | Repeats | Calls |
 |---|---|---|---|
 | **Driver** | Study, Experiment | Experiments, Runs | builds the Dataset once per experiment |
-| **Evolver** | Run, Generation | Generations, Individuals | Selector then Mutator, after a generation's individuals are measured |
+| **Evolver** | Run, Generation | Generations, Individuals | Selector then Mutator, after a generation's individuals are measured; the Exporter once, at the end of the run |
 | **Harness** | Individual, Example (train); Deployment, Example (deployed) | Examples, Rounds | Kernel every round; Verifier on graded rounds and Trainer between examples (train) |
 | **Kernel** | Round, Tick | Ticks, Instructions | none; it evaluates Nands directly |
 
@@ -74,9 +74,11 @@ Top to bottom, for training.
 - The one output-side convention is the **target**: how a label becomes the expected values of the output wires, e.g. one wire per possible digit with the right digit's wire set, or a label's raw bits. The task names its target, and the Driver uses the same convention in reverse to read answers back.
 - The Dataset is never changed after this, so every level below can read it freely without copying it.
 
-**Run**. One complete search from one seed. The Driver repeats it per experiment to measure how much results vary between seeds. Only train has runs. The **Evolver** carries out a run, generation after generation. When the run ends, it writes the best genome it found as a **model file**: the genome, its input and output sizes, and optionally the memory state it should start from. That file is training's only output and the deployed program's only input.
+**Run**. One complete search from one seed. The Driver repeats it per experiment to measure how much results vary between seeds. Only train has runs. The **Evolver** carries out a run, generation after generation. When the run ends, it hands the best genome it found to the **Exporter**, which canonicalises it (the README's optimised form, in a configured way) and writes it as a **model file**: the canonical genome, its input and output sizes, and optionally the memory state it should start from. That file is the deployed program's only input. Data leaves a run in one direction: Evolver → Exporter → model file.
 - `# Rng`: the random seed. Every random choice anywhere below is computed from the seed plus its position, e.g. which example is used as the 40th example of generation 12. There is no stored random state that code shares or advances, so a run gives the same result however its work is divided between threads.
 - For the same reason, examples are never shuffled into a stored order. The example to use is computed from (seed, generation, position within the generation).
+- **Checkpoints** are the Evolver's own: the population, in training form, at a generation boundary, read back only by the Evolver to resume a run. They are never exported.
+- The **Logger** keeps the **run log**, the record the Driver reads for reports and plots. Every component writes its own events to it. It is called, never a loop owner, and logging never changes results: a run's model file, checkpoints and per-generation records are identical however its work is divided between threads.
 
 **Generation**. One step of evolution. The **population** (the current collection of individuals, defined next) is measured; then:
 - the **Selector** compares the results and chooses which individuals become parents;
@@ -106,7 +108,7 @@ Top to bottom, for training.
 
 ## The deployed program
 
-Its only input is the model file written by the Evolver at the end of a training run, compiled into the program. Its interface is the README's input and output regions: for each input record it reads, it writes one output record.
+Its only input is the model file written by the Exporter at the end of a training run, compiled into the program. Its interface is the README's input and output regions: for each input record it reads, it writes one output record.
 
 - The **Deployment** level is one model running for as long as it is switched on. Its Arena is created once, at start-up, because there is no Individual level to own it.
 - Whoever embeds the model supplies raw input as bits and reads raw output bits. By default one process runs one example, so starting a new process clears the memory space.
@@ -162,10 +164,13 @@ Experiment
 │ │                                           ┌────↓────┐             │                    │ │
 │ │                                           │ Evolver │<────────────┘                    │ │
 │ │                                           └────┬────┘                                  │ │
-│ └────────────────────────────────────────────────┼───────────────────────────────────────┘ │
-│                                           ┌──────↓─────┐                                   │
-│                                           │ Model file │                                   │
-│                                           └────────────┘                                   │
+│ │                                           ┌────↓─────┐    ┌────────┐                   │ │
+│ │                                           │ Exporter │    │ Logger │<─ all components  │ │
+│ │                                           └────┬─────┘    └───┬────┘                   │ │
+│ └────────────────────────────────────────────────┼──────────────┼────────────────────────┘ │
+│                                           ┌──────↓─────┐   ┌────↓────┐                     │
+│                                           │ Model file │   │ Run log │                     │
+│                                           └────────────┘   └─────────┘                     │
 └────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 

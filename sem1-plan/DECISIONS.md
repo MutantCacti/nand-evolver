@@ -57,7 +57,7 @@ Drafted by DELTA and THREAD. Full text of earlier rounds is in git history (roun
 
 ## Settled (round 2 additions, updated by 1C)
 
-- **Components by level:** Run and Generation are owned by the Evolver, which calls the Selector (cross-individual, never reads a genome) and the Mutator after each generation. Individual and Example are owned by the Harness, which calls the Trainer (individual mode) between examples. Round has the Kernel (which owns Tick) and, in train, the Verifier.
+- **Components by level:** Run and Generation are owned by the Evolver, which calls the Selector (cross-individual, never reads a genome) and the Mutator after each generation, and the Exporter at the end of a run. Individual and Example are owned by the Harness, which calls the Trainer (individual mode) between examples. Round has the Kernel (which owns Tick) and, in train, the Verifier.
 - **Variations:** a behavioural tree, protocol (train and infer must agree) > algorithm (fixed for one execution of train, absent from infer) > parameter (independent within one execution), with parameters scoped to their algorithm. **World axes:** task (varies between Experiments), execution (changes time, never results; no level), replicate (seed; varies between Runs; lines are means over seeds). Frontier execution (tick modulo, next-index) is protocol, and each scheduling scheme is an alternative Kernel.
 - **Rounds:** a round is one input → ready → output handshake. An example is self-contained, order-independent, always parallelisable, and contains 1..R rounds with declared graded rounds. The arena persists across ticks and rounds and is cleared between examples. Streaming = one long example, chunked for parallelism.
 - **Configuration:** one experiment file per experiment is the single source of truth, and its schema is the taxonomy (binding time derived from tree position). Protocol and algorithm choices are compile-time; builds are cached by their hash (`build/<hash>/`). Parameters are runtime and accepted only from an experiment file whose hash matches the binary. The experiment file is embedded in the binary and emitted with every output. A figure is a set of experiment files. Config is a workbench artifact: the deployed program never sees one.
@@ -86,7 +86,7 @@ THREAD's restatement (round 4): **one authority, not one capability.** In the ex
 - **Driver:** a thin Python driver is the experiment's entry point. Its stages are keyed by their inputs:
   1. build
   2. write the Dataset files (Source flattened to bits, labels through the target)
-  3. train, once per seed (the Evolver writes each run's model file)
+  3. train, once per seed (the Exporter writes each run's model file)
   4. build infer with the model compiled in
   5. evaluate infer on held-out examples, reading answers back through the target and comparing with labels, plus perf/energy
   6. report
@@ -128,6 +128,7 @@ THREAD's restatement (round 4): **one authority, not one capability.** In the ex
 | — | Ready check | After each tick only, never before the first: every round runs at least one tick, so the start value alone can never answer. |
 | — | Layout | Lane code lives in `train/`, packed code in `infer/`. Codecs, if any, never know whether bits are laned or packed. |
 | — | `config.h` | `#define`s. |
-| — | Canonicalisation | Config-driven, done by train before the model file is written. |
+| — | Canonicalisation | Config-driven, done by the Exporter before it writes the model file. |
+| — | Exporter, Logger | `canonical` → **Exporter**: canonicalises the best genome and writes the model file, so data leaves a run one way (Evolver → Exporter → model file). `log` → **Logger**: keeps the run log; every component writes its own events. Both are called components, not loop owners. Checkpoints stay with the Evolver: training form, read back only by it. |
 
 The filesystem plan is `FILESYSTEM.md`.

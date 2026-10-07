@@ -42,13 +42,13 @@ nand-evolver/
 │   │   ├── config.c            # reads the flat experiment-file format; refuses one whose hash differs from the binary's
 │   │   ├── dataset.c           # maps the train Dataset file read-only; example lookup from (seed, generation, position)
 │   │   ├── rng.c               # stateless random streams derived from (seed, level indices)
-│   │   ├── evolver.c           # Evolver (Run, Generation): generations → individuals; the one place work is split; checkpoints; writes the model file
+│   │   ├── evolver.c           # Evolver (Run, Generation): generations → individuals; the one place work is split; checkpoints; hands the best genome to the Exporter
 │   │   ├── selector.c          # Selector: compares individuals; owns every reduction over examples
 │   │   ├── mutator.c           # Mutator: parents → children by random changes
 │   │   ├── trainer.c           # Trainer: changes a genome between examples (individual mode only)
 │   │   ├── verifier.c          # Verifier: produced vs expected wires on graded rounds → error
-│   │   ├── canonical.c         # canonicalisation (README), driven by config; called by the Evolver before writing a model
-│   │   ├── log.c               # every component logs its own events; per-thread buffers, merged in canonical order at generation boundaries
+│   │   ├── exporter.c          # Exporter: canonicalises the best genome (README; config-driven) and writes the model file via core/model.c; called once by the Evolver at the end of a run
+│   │   ├── logger.c            # Logger: the run log; every component writes its own events; per-thread buffers, merged in canonical order at generation boundaries
 │   │   ├── harness.c           # lane Harness: packing, protocol driving, Verifier/Trainer hooks, graded-round skipping
 │   │   └── kernel.c            # lane Kernel: reference scheme (every Nand, every tick)
 │   └── infer/                  # the product. Packed layout: one bit per wire, one example, canonical Nands
@@ -113,7 +113,7 @@ nand-evolver/
 3. **Documentation:** the README at the root (the protocol), `docs/` for the plan documents once SYN ends, and the existing per-file header comments.
 4. **Headers:** only at shared boundaries (decision 5).
 5. **Most overloaded:**
-   - **`evolver.c`:** both loops, the work split, checkpoints and the model write. Canonicalisation and logging have moved out; the work split could follow if it grows.
+   - **`evolver.c`:** both loops, the work split and checkpoints. Canonicalisation and the model write (Exporter) and logging (Logger) have moved out; the work split could follow if it grows.
    - **The lane Harness:** packing, protocol driving, hooks and graded skipping. That is its job, but it's the densest file.
    - **Smallest:** `word.h`, `arena.h` and `verifier.c` may merge into their callers once written.
 
