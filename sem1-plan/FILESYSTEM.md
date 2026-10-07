@@ -16,7 +16,7 @@ nand-evolver/
 │   ├── build.py                # protocol + algorithm choices → -D flags → make; embeds the experiment file and the model
 │   ├── sources.py              # raw task data readers (XOR/MUX tables, MNIST files)
 │   ├── dataset.py              # Source → Dataset files: raw data flattened to bits and chunked into rounds, expected bits from raw labels, graded flags; one file per split (train, validation, test), once per experiment
-│   ├── evaluate.py             # held-out evaluation: drives infer over stdin/stdout, decodes, compares with labels → accuracy; time, memory, energy
+│   ├── evaluate.py             # held-out evaluation: drives infer over stdin/stdout, compares output bits with label bits → accuracy; time, memory, energy
 │   ├── report.py               # run logs + execution axes → report
 │   └── plot.py                 # run logs → figures (e.g. loss vs time per experiment)
 ├── experiments/                # experiment files (the Config); each has a human-readable `name`
