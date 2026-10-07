@@ -36,7 +36,7 @@ nand-evolver/
 │   │   ├── layouts.c           # each output layout stated once (one-hot, thermometer, binary, ...)
 │   │   ├── encoder.h
 │   │   ├── encoder.c           # Encoder: world inputs → input wires; labels → expected wires via the layout
-│   │   ├── decoder.h           # Decoder: output wires → answer via the layout; per-wire attribution
+│   │   ├── decoder.h           # Decoder: output wires → answer via the layout; per-wire attribution; lane_* and packed_*
 │   │   ├── harness.h           # Harness (Individual/Deployment, Example): examples → rounds; lane_* and packed_* entry points
 │   │   └── kernel.h            # Kernel (Round, Tick): ticks → instructions; ready check; tick limit; lane_* and packed_*
 │   ├── lane/                   # train layout: one 64-bit word per wire, 64 examples at once
@@ -96,7 +96,7 @@ nand-evolver/
   - **`build.py`** writes `build/<hash>/config.h` from the protocol and algorithm keys, and embeds the experiment file in each binary.
   - **Parameters** reach `train` at start-up through `config.c`, which refuses an experiment file whose hash does not match the binary's.
 - **Execution is not configuration.** Thread count, machine and compiler flags are command-line or build facts, outside the hash. `train` records them in its output, and only `evolver.c` reads the thread count. That is what lets the determinism test compare 1 vs N threads on the same binary.
-- **Two implementations of one interface.** `harness.h` and `kernel.h` declare `lane_*` and `packed_*` entry points, so both layouts can link into the differential test. The lane Harness reaches the Verifier and Trainer only through hooks passed in by `train`, and tests pass stubs.
+- **Two implementations of one interface.** `harness.h`, `kernel.h` and `decoder.h` declare `lane_*` and `packed_*` entry points, so both layouts can link into the differential test. The lane Harness reaches the Verifier and Trainer only through hooks passed in by `train`, and tests pass stubs.
 - **Canonicalisation** (README) is `genome.c`'s, called by the Evolver before it writes the model file. The packed Kernel reads canonical two-index Nands. This is also a gap in ARCHITECTURE.md, which should say it.
 - **Which binaries link what.**
 
@@ -104,7 +104,7 @@ nand-evolver/
   |---|---|
   | `encode` | core, sources |
   | `train` | core, lane, train |
-  | `infer` | core, packed, infer |
+  | `infer` | core except `config.c` and `dataset.c` (no Config, no Dataset), packed, infer |
   | tests | core, lane and packed together, train (selected files) |
 
 - **Driver stages** (`experiment.py`), each skipped when its inputs are unchanged:
