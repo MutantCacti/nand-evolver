@@ -1,132 +1,125 @@
 # Filesystem Plan
 
-The planned layout of the nand-evolver codebase, derived from `ARCHITECTURE.md`. One file per component. `src/core/` holds what two or more binaries share. Comments name the level(s) a file serves, in the terms `ARCHITECTURE.md` defines.
+The planned layout of the nand-evolver codebase, derived from `ARCHITECTURE.md`. One file per component. `src/core/` holds what both C programs share. Comments name the level(s) a file serves, in the terms `ARCHITECTURE.md` defines.
+
+This revision assumes **the embedder encodes** (pending mutant's ruling; see the last section). infer is then a pure Nand machine whose interface is the README's input, ready and output regions, and all encoding and decoding lives in the Driver.
 
 ## Target repo state
 
 ```shell
 nand-evolver/
-├── driver/                     # Driver (Study, Experiment). Python tooling, never shipped
-│   ├── __main__.py             # `python -m driver <study>`: entry point
-│   ├── study.py                # Study: loop the experiment files of one figure
-│   ├── experiment.py           # Experiment: run its stages in order, skipping any whose inputs are unchanged
-│   ├── config.py               # experiment file schema (protocol → algorithm → parameters; task, replicate) and its hashes
-│   ├── build.py                # protocol + algorithm choices → -D flags → make; one build per hash in build/<hash>/, experiment file embedded
-│   ├── evaluate.py             # held-out evaluation of infer: answers vs labels → accuracy; time, memory, energy
-│   └── report.py               # run series + execution axes → report and plot
-├── studies/                    # one file per Study: the experiment files of one figure
-├── experiments/                # experiment files (the Config)
+├── driver/                     # Driver (Study, Experiment). Python workbench tooling, never shipped; expected to change
+│   ├── __main__.py             # `python -m driver run <experiment>` | `list` | `plot --type loss <experiment|study>`
+│   ├── experiment.py           # Experiment (main entry): run its stages, skipping any whose outputs already exist
+│   ├── study.py                # Study: a named set of experiments, recoverable from runs made independently
+│   ├── config.py               # experiment file schema (protocol → algorithm → parameters; task, replicate) and its hash
+│   ├── build.py                # protocol + algorithm choices → -D flags → make; embeds the experiment file and the model
+│   ├── sources.py              # raw task data readers (XOR/MUX tables, MNIST files)
+│   ├── codecs/                 # one file per codec: encode, encode_target and decode together
+│   │   ├── bits.py             # identity: raw bits in, raw bits out (XOR, MUX)
+│   │   ├── threshold.py        # pixels → threshold bits (MNIST inputs)
+│   │   └── onehot.py           # class ↔ one wire per class (MNIST outputs)
+│   ├── dataset.py              # Source + codecs → Dataset file (bits per round, expected bits, graded flags), once per experiment
+│   ├── evaluate.py             # held-out evaluation: drives infer over stdin/stdout, decodes, compares with labels → accuracy; time, memory, energy
+│   ├── report.py               # run logs + execution axes → report
+│   └── plot.py                 # run logs → figures (e.g. loss vs time per experiment)
+├── experiments/                # experiment files (the Config); each has a human-readable `name`
 │   ├── xor.cfg
 │   ├── mux.cfg
 │   ├── mnist.cfg
 │   └── seqmnist.cfg            # MNIST fed one row per round: 28 rounds, last graded
+├── studies/                    # one file per Study: its name and the names of its experiments
 ├── src/
-│   ├── core/                   # shared by two or more binaries
+│   ├── core/                   # shared by train and infer
 │   │   ├── word.h              # the word type
 │   │   ├── genome.h            # Genome and Nand (training and canonical forms); wire layout (constant, input, ready, output, internal)
-│   │   ├── genome.c            # create, copy, validate, canonicalise; the only code that knows the wire layout
+│   │   ├── genome.c            # create, copy, validate; the only code that knows the wire layout
 │   │   ├── arena.h             # Arena: the memory space of one individual
-│   │   ├── dataset.h
-│   │   ├── dataset.c           # Dataset file format: encoded examples (rounds of input wires, expected wires, graded flags). encode writes it, train maps it read-only
-│   │   ├── config.h
-│   │   ├── config.c            # reads the flat experiment-file format; checks its hash against the binary's
 │   │   ├── model.h
-│   │   ├── model.c             # model file: canonical genome + Encoder and Decoder ids and settings; read and write
-│   │   ├── layout.h            # output layout declaration: wire count, value ↔ wires, attribution kind
-│   │   ├── layouts.c           # each output layout stated once (one-hot, thermometer, binary, ...)
-│   │   ├── encoder.h
-│   │   ├── encoder.c           # Encoder: world inputs → input wires; labels → expected wires via the layout
-│   │   ├── decoder.h           # Decoder: output wires → answer via the layout; per-wire attribution; lane_* and packed_*
-│   │   ├── harness.h           # Harness (Individual/Deployment, Example): examples → rounds; lane_* and packed_* entry points
+│   │   ├── model.c             # model file: canonical genome, input/output sizes, optional initial memory state
+│   │   ├── harness.h           # Harness (Individual/Deployment, Example): examples → rounds; lane_* (train) and packed_* (infer)
 │   │   └── kernel.h            # Kernel (Round, Tick): ticks → instructions; ready check; tick limit; lane_* and packed_*
-│   ├── lane/                   # train layout: one 64-bit word per wire, 64 examples at once
-│   │   ├── harness.c           # calls Verifier and Trainer through hooks it is handed, so lane/ never depends on train/
-│   │   ├── kernel.c            # reference scheme (every Nand, every tick); alternative Kernels go here
-│   │   └── decoder.c           # see open decision C
-│   ├── packed/                 # deployed layout: one bit per wire, one example, canonical Nands
-│   │   ├── harness.c
-│   │   ├── kernel.c
-│   │   └── decoder.c
-│   ├── sources/                # workbench readers of each task's raw data; linked into encode only
-│   │   ├── source.h
-│   │   ├── xor.c
-│   │   ├── mux.c
-│   │   └── mnist.c             # also serves seqmnist (rows as rounds)
-│   ├── encode/
-│   │   └── main.c              # Encoder program: Source → Dataset file, once per experiment
-│   ├── train/
-│   │   ├── main.c              # one Run: Dataset + parameters + seed (+ thread count) → Evolver
-│   │   ├── evolver.h
-│   │   ├── evolver.c           # Evolver (Run, Generation): generations → individuals; the one place work is split; canonicalises and writes the model file
-│   │   ├── lookup.h
-│   │   ├── lookup.c            # example lookup by (seed, generation, position)
-│   │   ├── rng.h
+│   ├── train/                  # the search. Lane layout: one 64-bit word per wire, 64 examples at once
+│   │   ├── train.h             # boundary functions of the train components, for main.c and the tests
+│   │   ├── main.c              # one Run: experiment file + seed (+ thread count) → Evolver
+│   │   ├── config.c            # reads the flat experiment-file format; refuses one whose hash differs from the binary's
+│   │   ├── dataset.c           # maps the Dataset file read-only; example lookup from (seed, generation, position)
 │   │   ├── rng.c               # stateless random streams derived from (seed, level indices)
-│   │   ├── selector.h
+│   │   ├── evolver.c           # Evolver (Run, Generation): generations → individuals; the one place work is split; checkpoints; writes the model file
 │   │   ├── selector.c          # Selector: compares individuals; owns every reduction over examples
-│   │   ├── mutator.h
 │   │   ├── mutator.c           # Mutator: parents → children by random changes
-│   │   ├── trainer.h
 │   │   ├── trainer.c           # Trainer: changes a genome between examples (individual mode only)
-│   │   ├── verifier.h
 │   │   ├── verifier.c          # Verifier: produced vs expected wires on graded rounds → error
-│   │   ├── series.h
-│   │   └── series.c            # per-generation results written for the Driver
-│   └── infer/
-│       └── main.c              # Deployment: the model file, then the Harness on live input (see open decisions A, B)
+│   │   ├── attribution.c       # placeholder: where a C decode goes when a value-attributable layout is first needed
+│   │   ├── canonical.c         # canonicalisation (README), driven by config; called by the Evolver before writing a model
+│   │   ├── log.c               # appends one component's events to the run log; every component logs its own
+│   │   ├── harness.c           # lane Harness: packing, protocol driving, Verifier/Trainer hooks, graded-round skipping
+│   │   └── kernel.c            # lane Kernel: reference scheme (every Nand, every tick)
+│   └── infer/                  # the product. Packed layout: one bit per wire, one example, canonical Nands
+│       ├── main.c              # Deployment: compiled-in model; stdin input record → flag byte (+ output record) on stdout, lock-step
+│       ├── harness.c           # packed Harness
+│       └── kernel.c            # packed Kernel
 ├── tests/
 │   ├── test_protocol.c         # README semantics: constant 0, reserved inputs, ready, tick limit, reverse-order writeback
-│   ├── test_layouts.c          # differential: lane vs packed Harness + Kernel + Decoder agree on every example (stub hooks)
-│   ├── test_codec.c            # each output layout: decode(encode_target(v)) == v
+│   ├── test_layouts.c          # differential: lane vs packed Harness + Kernel agree on every example (stub hooks)
 │   ├── test_canonical.c        # a genome and its canonical form behave identically
 │   ├── test_lookup.c           # example lookup is pure: same (seed, generation, position) → same example
-│   └── test_determinism.py     # same experiment file and seed, 1 vs N threads → bit-identical run
-├── build/                      # generated, ignored: build/<hash>/{config.h, encode, train, infer}
-├── runs/                       # generated, ignored: runs/<hash>/<seed>/ (model file, series, report)
+│   ├── test_resume.c           # stop at a generation boundary and resume → bit-identical to an uninterrupted run
+│   ├── test_codecs.py          # each codec: decode(encode_target(v)) == v
+│   └── test_determinism.py     # same experiment and seed, 1 vs N threads → bit-identical run
+├── build/<name>/               # generated, tracked: config.h, the experiment's hash, binaries
+├── runs/<name>/<seed>/         # generated, tracked: run log, checkpoints, model file, codec metadata, report
 ├── data/                       # raw Sources too large for git (MNIST), ignored
+├── docs/                       # ARCHITECTURE, DECISIONS and FILESYSTEM, moved here when SYN ends
 ├── .gitignore
-├── Makefile                    # builds one hash's binaries from its -D flags; `make test`
-└── README.md
+├── Makefile                    # builds one experiment's binaries from its -D flags; `make test`
+└── README.md                   # the protocol
 ```
 
 ## Notes
 
+- **Names, not hashes, on disk.**
+  - Every experiment file has a human-readable `name`. `build/` and `runs/` are keyed by it, so an agent can read outputs without the Driver.
+  - The hash is stored inside `build/<name>/` and checked by the binary; it's never used as a path.
+  - Should the binaries themselves be ignored while their `config.h` and hash stay tracked? They're large and reproducible.
 - **Configuration flows down.**
-  - **Experiment files** use a flat `key = value` format with dotted keys (`protocol.kernel = reference`, `algorithm.selector = tournament`, `parameter.population = 256`). The Driver and the C binaries can both read it without a parser dependency.
-  - **`build.py`** writes `build/<hash>/config.h` from the protocol and algorithm keys, and embeds the experiment file in each binary.
-  - **Parameters** reach `train` at start-up through `config.c`, which refuses an experiment file whose hash does not match the binary's.
-- **Execution is not configuration.** Thread count, machine and compiler flags are command-line or build facts, outside the hash. `train` records them in its output, and only `evolver.c` reads the thread count. That is what lets the determinism test compare 1 vs N threads on the same binary.
-- **Two implementations of one interface.** `harness.h`, `kernel.h` and `decoder.h` declare `lane_*` and `packed_*` entry points, so both layouts can link into the differential test. The lane Harness reaches the Verifier and Trainer only through hooks passed in by `train`, and tests pass stubs.
-- **Canonicalisation** (README) is `genome.c`'s, called by the Evolver before it writes the model file. The packed Kernel reads canonical two-index Nands. This is also a gap in ARCHITECTURE.md, which should say it.
-- **Which binaries link what.**
-
-  | Binary | Links |
-  |---|---|
-  | `encode` | core, sources |
-  | `train` | core, lane, train |
-  | `infer` | core except `config.c` and `dataset.c` (no Config, no Dataset), packed, infer |
-  | tests | core, lane and packed together, train (selected files) |
-
-- **Driver stages** (`experiment.py`), each skipped when its inputs are unchanged:
+  - **Experiment files** are flat `key = value` with dotted keys (`protocol.kernel = reference`, `algorithm.selector = tournament`, `parameter.population = 256`), readable by Python and C alike.
+  - **`build.py`** writes `build/<name>/config.h` as `#define`s from the protocol and algorithm keys, and embeds the experiment file in `train`. `core/` includes `config.h` too, e.g. for config-driven canonicalisation.
+  - **`config.c`** refuses an experiment file whose hash differs from the binary's.
+- **Execution is not configuration.** Thread count, machine and compiler flags are command-line or build facts, outside the hash, recorded in the run log. Only `evolver.c` reads the thread count.
+- **The model is one file.** `build.py` compiles the model file into `infer`, so a deployed binary carries its model. The model file leaves room for an initial memory state (a child starting from its parent's memory). The codec it was trained with is metadata beside it in `runs/`, for whoever embeds it, never read by infer.
+- **Two implementations of one interface.** `harness.h` and `kernel.h` declare `lane_*` (in `train/`) and `packed_*` (in `infer/`) so both link into the differential test. The lane Harness reaches the Verifier and Trainer only through hooks, so tests can stub them.
+- **The Driver is stateless; runs keep everything.**
+  - `runs/` holds full-detail logs, so scores and plots can be recomputed without re-running.
+  - A Study names its experiments, so experiments run independently can later be gathered as one.
+- **Driver stages** for one experiment, each skipped when its outputs exist:
   1. build
-  2. encode (Source → Dataset file)
-  3. train, once per seed (→ model file + series)
-  4. prepare infer for each model file (see A)
+  2. Dataset file
+  3. train, once per seed
+  4. build infer with the chosen model
   5. evaluate on held-out examples
   6. report
+- **Held-out data is a lookup too.** The train, validation and test splits are fixed by the experiment file and seed, never built per run or affected by execution order.
 
 ## Decisions this plan made beyond ARCHITECTURE.md
 
-1. **The Encoder is its own program, `encode`.** The Driver owns the Experiment level and is Python, while the Encoder is C because infer links it too. `encode` lets the Driver run it once per experiment and give every Run the same read-only Dataset file. Encoding inside each run would break the Dataset's Experiment scope.
-2. **`train` is one Run per invocation,** following from the Driver owning the loop over Runs.
-3. **Lane and packed are separate files.** Layout is not a variation: train is always lane and infer always packed. Round 1's `#if` ruling covers algorithm and protocol variants, which still use `#if` inside their component's file.
-4. **Task code lives in three places:** a raw data reader in `sources/`, an encoding and output layout chosen in the experiment file, and what counts as correct in the Verifier. Each output layout is stated once, in `layouts.c`. That answers ARCHITECTURE's open question about the shared output layout with "yes".
-5. **Only the reference Kernel is planned.** Alternative Kernels get a place, not files, until there is a run to compare them against.
+1. **`train` is one Run per invocation,** following from the Driver owning the loop over Runs.
+2. **Lane and packed are files in `train/` and `infer/`,** because train is always lane and infer always packed. Algorithm and protocol variants are `#if` blocks inside their component's file.
+3. **Tasks are named in the experiment file.** Its source, codecs and graded rounds are keys, not separate task files.
+4. **P1 trains bit-attributable output layouts only** (XOR, MUX, one-hot MNIST). There the Verifier and Trainer need nothing but `out ^ expected`, so no layout is stated twice. `attribution.c` marks where a C decode would go.
+5. **Headers only where shared:** `core/*.h` for both programs, and `train/train.h` for train's components and the tests. Private functions are `static`.
 
-## Open decisions for mutant
+## Answers to the review questions
 
-- **A. Model file: compiled into infer, or loaded at start-up?** The README's deployment section (genome read-only, flashable ROM) points to compiled in: `build.py` emits the model as a generated source and `infer` never links the read path. Loading at start-up is simpler for the Driver's evaluation stage.
-- **B. What form does infer's live input take?** ARCHITECTURE says the deployed Encoder runs "on live input" but never says what that input looks like. Proposal: one documented record format on stdin. `evaluate.py` produces it from held-out Source data, so `sources/` stays out of the product.
-- **C. Does the Decoder know the layout?**
-  - **Yes** (as drawn): a lane Decoder attributes 64 examples at once for bit-attributable layouts. ARCHITECTURE's "packing is a property of the Harness and Kernel" then needs the Decoder added.
-  - **No:** the Harness unpacks lane words, and one plain Decoder lives in core. That's simpler, but train's attribution becomes per example.
+1. **`config.h` values are `#define`s.** Variants are `#if` blocks, and the preprocessor cannot see `constexpr`. Parameters are runtime.
+2. **The Evolver pauses and resumes,** at generation boundaries, where the whole population is at rest. Randomness is pure in (seed, level indices), so a checkpoint is just the generation index plus the population's genomes (and memory states if inherited). The Driver decides *whether* to resume. `test_resume` checks that resuming is bit-identical to never stopping.
+3. **Documentation:** the README at the root (the protocol), `docs/` for the plan documents once SYN ends, and the existing per-file header comments.
+4. **Headers:** only at shared boundaries (decision 5).
+5. **Most overloaded:**
+   - **`evolver.c`:** both loops, the work split, checkpoints and the model write. Canonicalisation and logging have moved out; the work split could follow if it grows.
+   - **The lane Harness:** packing, protocol driving, hooks and graded skipping. That is its job, but it's the densest file.
+   - **Smallest:** `word.h`, `arena.h` and `verifier.c` may merge into their callers once written.
+
+## Open for mutant
+
+- **E. Encoding ownership.** Does the embedder encode (this plan, which ATLAS and DELTA both recommend) or does the model? If the embedder encodes, ARCHITECTURE.md's Encoder and Decoder move to the Driver, and train and infer share only the Harness, Kernel and genome format.
