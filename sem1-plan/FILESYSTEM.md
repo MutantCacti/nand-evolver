@@ -15,8 +15,9 @@ nand-evolver/
 │   ├── config.py               # experiment file schema (protocol → algorithm → parameters; task, replicate) and its hash
 │   ├── build.py                # protocol + algorithm choices → -D flags → make; embeds the experiment file and the model
 │   ├── sources.py              # raw task data readers (XOR/MUX tables, MNIST files)
-│   ├── dataset.py              # Source → Dataset files: raw data flattened to bits and chunked into rounds, expected bits from labels by the task's target convention (raw bits for XOR/MUX, one-hot for MNIST), graded flags; one file per split (train, validation, test), once per experiment
-│   ├── evaluate.py             # held-out evaluation: drives infer over stdin/stdout, compares output bits with label bits → accuracy; time, memory, energy
+│   ├── targets.py              # each target convention, both directions: label → expected bits and back (raw bits, one-hot)
+│   ├── dataset.py              # Source → Dataset files: raw data flattened to bits and chunked into rounds, expected bits via targets.py, graded flags; one file per split (train, validation, test), once per experiment
+│   ├── evaluate.py             # held-out evaluation: drives infer over stdin/stdout, maps output bits back through targets.py, compares with labels → accuracy; time, memory, energy
 │   ├── report.py               # run logs + execution axes → report
 │   └── plot.py                 # run logs → figures (e.g. loss vs time per experiment)
 ├── experiments/                # experiment files (the Config); each has a human-readable `name`
@@ -86,7 +87,7 @@ nand-evolver/
 - **Ready's default is a protocol variant.** What sets the incentive is ready's value in a cleared Arena.
   - **Default-wait** (today's README: initialised to 1, active-low): an unwired ready never fires, every untrained genome is graded at the tick limit, and nothing pushes it to signal. It learns the task first and ready later, if ever.
   - **Default-ready**: an unwired ready means ready now, so a genome must do work to hold its answer until its logic has settled. Since a Nand reading a cleared wire outputs 1, "high = ready" makes this the free state.
-  - It is a protocol key (`protocol.ready = default_ready | default_wait`), compiled into both programs, so both are lines on the same figure. Which one is P1's reference is mutant's call.
+  - It is a protocol key (`protocol.ready = default_ready | default_wait`), compiled into both programs, so both are lines on the same figure. P1's reference is **default-ready** (active-high), because it makes early training faster (mutant); default-wait is the comparison.
 - **Two implementations of one interface.** `harness.h` and `kernel.h` declare `lane_*` (in `train/`) and `packed_*` (in `infer/`) so both link into the differential test. The lane Harness reaches the Verifier and Trainer only through hooks, so tests can stub them.
 - **The Driver is stateless; runs keep everything.**
   - `runs/` holds full-detail logs, so scores and plots can be recomputed without re-running.
@@ -104,8 +105,8 @@ nand-evolver/
 
 1. **`train` is one Run per invocation,** following from the Driver owning the loop over Runs.
 2. **Lane and packed are files in `train/` and `infer/`,** because train is always lane and infer always packed. Algorithm and protocol variants are `#if` blocks inside their component's file.
-3. **Tasks are named in the experiment file:** its source, bit order, target convention, rounds per example and graded rounds are keys. There are no task files and no input codecs. The only output-side convention is how a label becomes expected bits, which is a function in `dataset.py` that `evaluate.py` inverts.
-4. **Error and attribution are bitwise.** With no codec, expected outputs are raw label bits, so the Verifier and Trainer need nothing but `out ^ expected`.
+3. **Tasks are named in the experiment file:** its source, bit order, target convention, rounds per example and graded rounds are keys. There are no task files and no input codecs. The only output-side convention is how a label becomes expected bits, stated once in `targets.py` (both directions).
+4. **Error and attribution are bitwise.** Expected outputs are bits, so the Verifier and Trainer need nothing but `out ^ expected`. The limit: for a numeric target written in binary, Hamming distance counts a wrong high bit the same as a wrong low bit, so numeric targets need a non-Hamming error. That's outside P1's tasks (XOR, MUX, one-hot MNIST).
 5. **Headers only where shared:** `core/*.h` for both programs, and `train/train.h` for train's components and the tests. Private functions are `static`.
 
 ## Answers to the review questions
