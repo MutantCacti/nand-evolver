@@ -19,7 +19,7 @@ nand-evolver/
 │   │   ├── bits.py             # identity: raw bits in, raw bits out (XOR, MUX)
 │   │   ├── threshold.py        # pixels → threshold bits (MNIST inputs)
 │   │   └── onehot.py           # class ↔ one wire per class (MNIST outputs)
-│   ├── dataset.py              # Source + codecs → Dataset file (bits per round, expected bits, graded flags), once per experiment
+│   ├── dataset.py              # Source + codecs → Dataset files (bits per round, expected bits, graded flags), one per split (train, validation, test), once per experiment
 │   ├── evaluate.py             # held-out evaluation: drives infer over stdin/stdout, decodes, compares with labels → accuracy; time, memory, energy
 │   ├── report.py               # run logs + execution axes → report
 │   └── plot.py                 # run logs → figures (e.g. loss vs time per experiment)
@@ -43,7 +43,7 @@ nand-evolver/
 │   │   ├── train.h             # boundary functions of the train components, for main.c and the tests
 │   │   ├── main.c              # one Run: experiment file + seed (+ thread count) → Evolver
 │   │   ├── config.c            # reads the flat experiment-file format; refuses one whose hash differs from the binary's
-│   │   ├── dataset.c           # maps the Dataset file read-only; example lookup from (seed, generation, position)
+│   │   ├── dataset.c           # maps the train Dataset file read-only; example lookup from (seed, generation, position)
 │   │   ├── rng.c               # stateless random streams derived from (seed, level indices)
 │   │   ├── evolver.c           # Evolver (Run, Generation): generations → individuals; the one place work is split; checkpoints; writes the model file
 │   │   ├── selector.c          # Selector: compares individuals; owns every reduction over examples
@@ -52,7 +52,7 @@ nand-evolver/
 │   │   ├── verifier.c          # Verifier: produced vs expected wires on graded rounds → error
 │   │   ├── attribution.c       # placeholder: where a C decode goes when a value-attributable layout is first needed
 │   │   ├── canonical.c         # canonicalisation (README), driven by config; called by the Evolver before writing a model
-│   │   ├── log.c               # appends one component's events to the run log; every component logs its own
+│   │   ├── log.c               # every component logs its own events; per-thread buffers, merged in canonical order at generation boundaries
 │   │   ├── harness.c           # lane Harness: packing, protocol driving, Verifier/Trainer hooks, graded-round skipping
 │   │   └── kernel.c            # lane Kernel: reference scheme (every Nand, every tick)
 │   └── infer/                  # the product. Packed layout: one bit per wire, one example, canonical Nands
@@ -66,9 +66,9 @@ nand-evolver/
 │   ├── test_lookup.c           # example lookup is pure: same (seed, generation, position) → same example
 │   ├── test_resume.c           # stop at a generation boundary and resume → bit-identical to an uninterrupted run
 │   ├── test_codecs.py          # each codec: decode(encode_target(v)) == v
-│   └── test_determinism.py     # same experiment and seed, 1 vs N threads → bit-identical run
+│   └── test_determinism.py     # same experiment and seed, 1 vs N threads → identical model file, checkpoints and per-generation records
 ├── build/<name>/               # generated, tracked: config.h, the experiment's hash, binaries
-├── runs/<name>/<seed>/         # generated, tracked: run log, checkpoints, model file, codec metadata, report
+├── runs/<name>/<seed>/         # generated, tracked: the experiment's hash, run log, checkpoints, model file, codec metadata, report
 ├── data/                       # raw Sources too large for git (MNIST), ignored
 ├── docs/                       # ARCHITECTURE, DECISIONS and FILESYSTEM, moved here when SYN ends
 ├── .gitignore
@@ -81,10 +81,11 @@ nand-evolver/
 - **Names, not hashes, on disk.**
   - Every experiment file has a human-readable `name`. `build/` and `runs/` are keyed by it, so an agent can read outputs without the Driver.
   - The hash is stored inside `build/<name>/` and checked by the binary; it's never used as a path.
+  - Every run directory records its hash too. The Driver refuses to combine runs whose hashes differ under one name, so editing an experiment without renaming it can't silently mix results.
   - Should the binaries themselves be ignored while their `config.h` and hash stay tracked? They're large and reproducible.
 - **Configuration flows down.**
   - **Experiment files** are flat `key = value` with dotted keys (`protocol.kernel = reference`, `algorithm.selector = tournament`, `parameter.population = 256`), readable by Python and C alike.
-  - **`build.py`** writes `build/<name>/config.h` as `#define`s from the protocol and algorithm keys, and embeds the experiment file in `train`. `core/` includes `config.h` too, e.g. for config-driven canonicalisation.
+  - **`build.py`** writes `build/<name>/config.h` as `#define`s from the protocol and algorithm keys, and embeds the experiment file in `train`. infer gets a protocol-only header (e.g. the Kernel scheme), so the deployed program never sees algorithm keys. `core/` headers read those protocol `#define`s.
   - **`config.c`** refuses an experiment file whose hash differs from the binary's.
 - **Execution is not configuration.** Thread count, machine and compiler flags are command-line or build facts, outside the hash, recorded in the run log. Only `evolver.c` reads the thread count.
 - **The model is one file.** `build.py` compiles the model file into `infer`, so a deployed binary carries its model. The model file leaves room for an initial memory state (a child starting from its parent's memory). The codec it was trained with is metadata beside it in `runs/`, for whoever embeds it, never read by infer.
@@ -99,7 +100,7 @@ nand-evolver/
   4. build infer with the chosen model
   5. evaluate on held-out examples
   6. report
-- **Held-out data is a lookup too.** The train, validation and test splits are fixed by the experiment file and seed, never built per run or affected by execution order.
+- **Splits are stated once.** `dataset.py` writes the train, validation and test splits as separate Dataset files, deterministically from the experiment file and seed, so no split logic exists in C. Example order within the train file is a lookup, never affected by execution order.
 
 ## Decisions this plan made beyond ARCHITECTURE.md
 
@@ -121,5 +122,12 @@ nand-evolver/
    - **Smallest:** `word.h`, `arena.h` and `verifier.c` may merge into their callers once written.
 
 ## Open for mutant
+
+- **F. Example boundaries in infer.** Lock-step stdin carries rounds, but nothing marks where an example ends, so infer can't clear its Arena. ATLAS and DELTA lean towards (a), which serves the evaluator and a streaming embedder alike:
+  - (a) a reset record from the embedder;
+  - (b) rounds per example stored in the model;
+  - (c) never clear.
+- **G. Infer output at the tick limit.** Training scores a genome's output even when it never signals ready. Should infer emit a distinct flag value ("timed out, output follows") or flag 0 with no output? The differential test then covers it.
+- **H. Binaries in `build/`.** ATLAS recommends ignoring them and tracking only `config.h` and the hash, since binaries depend on execution facts outside the hash.
 
 - **E. Encoding ownership.** Does the embedder encode (this plan, which ATLAS and DELTA both recommend) or does the model? If the embedder encodes, ARCHITECTURE.md's Encoder and Decoder move to the Driver, and train and infer share only the Harness, Kernel and genome format.
