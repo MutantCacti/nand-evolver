@@ -22,7 +22,7 @@ The memory space is segmented by an I/O protocol:
 | ---------------- | --------- | ----------------------------------------------------------- |
 | `0`              | constant  | A reserved constant reference to 0                          |
 | `[1, 1+i)`       | input     | The input space to which a model embedder writes            |
-| `1+i`            | ready     | Output wire 0 which the model must set active-low to output |
+| `1+i`            | ready     | Output wire 0, which the model sets to signal that its output is ready |
 | `[2+i, 2+i+m)`   | output    | The rest of the output space the model writes to            |
 | `[2+i+m, n)`     | internal  | Hidden working memory of the model                          |
 

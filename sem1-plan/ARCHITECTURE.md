@@ -93,7 +93,8 @@ Top to bottom, for training.
 - The **Harness** loops over the examples it was given and their rounds, writing each round's input values into the input region and having the Kernel run the genome. It records each example's result — how wrong it was (its **error**) and how many ticks it took — and passes those records up unchanged.
 
 **Round**. One exchange: input values are written, the genome runs until it signals that its output is ready, and the output region is read. A round also ends after a configured maximum number of ticks, so a genome that never signals still produces a result: the model always answers.
-- Clearing the memory space sets every wire to 0 except the ready wire, which is set to 1. Which value of the ready wire means "ready" is a protocol choice. With **default-ready**, 1 means ready, so a genome answers immediately unless it does work to hold ready low until its logic has settled. With **default-wait** (the README's active-low ready), an untrained genome never signals and is graded at the tick limit. Default-ready is the reference, because it makes early training faster.
+- Clearing the memory space sets every wire to 0. Ready then follows two independent protocol choices: the value the ready wire is given at the start of each round (0 or 1), and the value that means "ready" (0 or 1). The Harness writes ready's start value at the start of every round, together with the inputs, so every round of an example opens the same way.
+- The reference starts ready at 0 and treats 1 as ready. A genome isn't ready until some Nand drives the wire high, and a Nand reading cleared wires outputs 1, so early genomes answer early and must learn to hold ready low until their logic has settled. That makes early training faster. The other three combinations are compared against it.
 - The tick maximum is a ceiling on how deep a genome's logic can be, not merely a safety valve. A signal needs one tick per layer it passes through, so a solution needing more layers than the limit allows cannot be found at all — and charging a genome for the ticks it used also charges it for depth.
 - On graded rounds the **Verifier** compares the produced output wires with the expected ones. The comparison is bitwise, so it shows directly which wires are wrong, and the Mutator and Trainer can use that as evidence to choose changes. It exists only in train: it is what turns an answer into an error, and nothing in the product needs that.
 - Bitwise comparison suits targets where each wire stands on its own (one wire per possible answer). For a number written in binary, a wrong high wire and a wrong low wire count the same, so such targets would need a different error.
@@ -119,16 +120,16 @@ Evaluating several finished genomes against held-out examples is the **Driver's*
 ```
 Experiment
 ┌────────────────────────────────────────────────────────────────────────────────────────────┐
-│   ┌────────┐      ┌─────────┐                                                              │
-│   │ Driver ├─────>│ Dataset │                                                              │
-│   └────────┘      └────┬────┘                                                              │
-│ Run                    │                                                                   │
-│ ┌──────────────────────↓─────────────────────────────────────────────────────────────────┐ │
-│ │                      │                        ┌─────┐                                  │ │
-│ │                      │                        │ Rng │                                  │ │
-│ │                      │                        └──┬──┘                                  │ │
-│ │ Generation           │                           │                                     │ │
-│ │ ┌────────────────────┼───────────────────────────↓───────────────────────────────────┐ │ │
+│                   ┌─────────┐     ┌────────┐      ┌────────┐                               │
+│                   │ Dataset │<────┤ Driver ├─────>│ Config │                               │
+│                   └────┬────┘     └───┬────┘      └───┬────┘                               │
+│ Run                    │              │               │                                    │
+│ ┌──────────────────────↓──────────────↓───────────────↓──────────────────────────────────┐ │
+│ │                      │           ┌─────┐                                               │ │
+│ │                      │           │ Rng │                                               │ │
+│ │                      │           └──┬──┘                                               │ │
+│ │ Generation           │              │                                                  │ │
+│ │ ┌────────────────────┼──────────────↓────────────────────────────────────────────────┐ │ │
 │ │ │ Individual         │                                                               │ │ │
 │ │ │ ┌──────────────────┼─────────────────────────────────────────────────────────────┐ │ │ │
 │ │ │ │                  │            ┌─────────┐                                      │ │ │ │
@@ -171,7 +172,7 @@ Experiment
 
 Three kinds of choice distinguish one version of the program from another, in decreasing scope:
 
-- **Protocol** — train and infer must agree, or a saved genome means something different in each: how the Kernel schedules Nands, and which ready value means ready.
+- **Protocol** — train and infer must agree, or a saved genome means something different in each: how the Kernel schedules Nands, ready's start value, and which ready value means ready.
 - **Algorithm** — fixed for one execution of train, and absent from infer: whether a Trainer exists, how the Selector compares individuals, whether a child starts from a copy of its parent's memory space.
 - **Parameter** — may vary within one execution: rates, limits, population size, the tick maximum.
 

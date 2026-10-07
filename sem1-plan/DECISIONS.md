@@ -37,7 +37,7 @@ Drafted by DELTA and THREAD. Full text of earlier rounds is in git history (roun
   2. Results move up one level at a time, **unreduced until the Selector**, which owns every reduction over examples.
   3. Buffers are allocated at their owning level and written below it by pointer. The Arena is allocated per individual (once at start-up when deployed), cleared per example and written per tick.
 - **One level per function.** `main` is the whole pipeline in a few tiered loops.
-- **Ready is protocol, not task.** The Kernel reads it. Which value means ready is a protocol key: **default-ready** (active-high, so a genome answers at once unless it holds ready low) is the reference, because it makes early training faster; **default-wait** (active-low, initialised to all-ones) is the comparison.
+- **Ready is protocol, not task.** The Kernel reads it. Two independent protocol keys: ready's start value (0 or 1) and the value that means ready (0 or 1). The Harness writes the start value at the start of every round. Reference: start 0, ready on 1 (it makes early training faster); the other three combinations are comparisons.
 - **Batching is dataset preparation, not task.** The **Verifier** (train-only) measures correctness only. Cost terms (ticks, live gates, address space) travel up and are weighted at selection. Task is not a hierarchy level.
 - **Cost prices live gates, not present gates** (protects the inert reservoir under hold + slack).
 - **Examples are a pure lookup** on (seed, generation, position within the generation). Nothing prepares or shuffles a stored order, and *epoch* is not a concept.
@@ -124,7 +124,7 @@ THREAD's restatement (round 4): **one authority, not one capability.** In the ex
 | G | Tick limit in infer | Forced closure: the model always outputs, one output record per input record, with no flag. |
 | H | `build/`, `runs/`, `data/` | Git-ignored, but keyed by experiment `name` and meant to be read by developers and agents. |
 | — | Model file | Compiled into infer ("one model is one file"): canonical genome, input/output sizes, room for an initial memory state. |
-| — | Ready | Protocol key `default_ready \| default_wait`. Default-ready (active-high) is the P1 reference: it makes early training faster. |
+| — | Ready | Two independent protocol keys, start value (0/1) and ready value (0/1), giving four combinations. Reference: start 0, ready on 1 (faster early training). The Harness re-initialises ready at the start of every round (option a). README describes ready generically. |
 | — | Layout | Lane code lives in `train/`, packed code in `infer/`. Codecs, if any, never know whether bits are laned or packed. |
 | — | `config.h` | `#define`s. |
 | — | Canonicalisation | Config-driven, done by train before the model file is written. |
