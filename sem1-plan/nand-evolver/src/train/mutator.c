@@ -9,8 +9,8 @@
 
 #include <stdlib.h>
 
-Genome * mutator_breed(const Config * config, const Genome * parent,
-                       uint64_t seed, size_t generation, size_t child)
+Genome * mutator_mutate(const Config * config, const Genome * parent,
+                        uint64_t seed, size_t generation, size_t child)
 {
     (void)config; (void)parent; (void)seed; (void)generation; (void)child;
     abort();    /* stub */

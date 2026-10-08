@@ -9,13 +9,13 @@
 
 #include <stdlib.h>
 
-Logger * logger_open(const char * path, unsigned threads)
+Logger * logger_open(const char * path, size_t threads)
 {
     (void)path; (void)threads;
     abort();    /* stub */
 }
 
-void logger_event(Logger * logger, unsigned thread, const char * event, const char * fields)
+void logger_event(Logger * logger, size_t thread, const char * event, const char * fields)
 {
     (void)logger; (void)thread; (void)event; (void)fields;
     abort();    /* stub */

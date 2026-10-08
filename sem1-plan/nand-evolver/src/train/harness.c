@@ -14,7 +14,7 @@
 
 int lane_harness_individual(const Genome * genome, Arena * arena,
                             const Example * examples, size_t num_examples,
-                            const HarnessHooks * hooks, unsigned tick_limit,
+                            const HarnessHooks * hooks, uint32_t tick_limit,
                             Record * records_out)
 {
     (void)genome; (void)arena; (void)examples; (void)num_examples;
@@ -24,7 +24,7 @@ int lane_harness_individual(const Genome * genome, Arena * arena,
 
 int lane_harness_example(const Genome * genome, Arena * arena,
                          const Example * group, size_t group_size,
-                         const HarnessHooks * hooks, unsigned tick_limit,
+                         const HarnessHooks * hooks, uint32_t tick_limit,
                          Record * records_out)
 {
     (void)genome; (void)arena; (void)group; (void)group_size;

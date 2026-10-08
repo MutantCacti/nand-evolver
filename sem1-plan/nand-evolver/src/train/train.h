@@ -30,10 +30,11 @@
  * only numbers live here. Grows with the experiment-file schema.
  *
  * Two hashes, because two different things need identifying. The experiment
- * hash covers protocol, training, inference, parameter and task keys, but not
- * replicate or execution: it identifies results, is recorded by every run
- * directory, and is what the determinism test holds fixed. The build hash adds
- * the compile-time execution keys: it identifies this binary. */
+ * hash covers protocol, training, inference, parameter and task keys, but
+ * neither parameter.seeds nor execution: it identifies results, is recorded by
+ * every run directory, and is what the determinism test holds fixed. Seeds are
+ * excluded because the runs of one experiment differ only in their seed. The
+ * build hash adds the compile-time execution keys: it identifies this binary. */
 typedef struct
 {
     const char * name;          /* the experiment file's own filename, less .cfg */
@@ -41,11 +42,9 @@ typedef struct
     uint64_t build_hash;
 
     size_t population;
-    unsigned generations;
-    unsigned tick_limit;
-    size_t address_slack;       /* wire space beyond what the genome drives */
-
-    unsigned threads;           /* execution.threads, read at start-up */
+    size_t generations;
+    uint32_t tick_limit;
+    size_t threads;             /* execution.threads, read at start-up */
 }
 Config;
 
@@ -124,8 +123,8 @@ int selector_select(const Config * config,
 
 /* A child from one parent, by random changes: adding a Nand, rewiring an
  * index, reordering. Pure in (seed, generation, child). */
-Genome * mutator_breed(const Config * config, const Genome * parent,
-                       uint64_t seed, size_t generation, size_t child);
+Genome * mutator_mutate(const Config * config, const Genome * parent,
+                        uint64_t seed, size_t generation, size_t child);
 
 /* ---- trainer.c --------------------------------------------------------- */
 
@@ -160,8 +159,8 @@ int exporter_export(const Config * config, const Genome * best,
  * boundaries, so logging never changes a result. */
 typedef struct Logger Logger;
 
-Logger * logger_open(const char * path, unsigned threads);
-void logger_event(Logger * logger, unsigned thread, const char * event, const char * fields);
+Logger * logger_open(const char * path, size_t threads);
+void logger_event(Logger * logger, size_t thread, const char * event, const char * fields);
 int logger_merge(Logger * logger, size_t generation);
 int logger_close(Logger * logger);
 

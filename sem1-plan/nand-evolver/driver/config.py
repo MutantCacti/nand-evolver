@@ -2,26 +2,28 @@
 
 The experiment file schema and its hash.
 
-Flat `key = value` with dotted keys, readable by Python and C alike. Seven
+Flat `key = value` with dotted keys, readable by Python and C alike. Six
 prefixes, matching ARCHITECTURE's taxonomy:
 
     protocol.*      train and infer must agree, or a saved genome changes meaning
     training.*      fixed for train, absent from infer
     inference.*     fixed for infer, absent from train
-    parameter.*     numbers, read at start-up
+    parameter.*     numbers, read at start-up, `parameter.seeds` among them
     execution.*     time and memory, never output: threads, backend, lane width
     task.*          which problem, and how its data becomes bits
-    replicate.*     the seeds
 
 Two hashes, because two different things need identifying:
 
-    experiment hash   protocol, training, inference, parameter and task keys;
-                      not replicate, not execution. Identifies results, is
+    experiment hash   protocol, training, inference, parameter and task keys,
+                      except `parameter.seeds`, and no execution key.
+                      Identifies results, is
                       recorded by every run directory, and is what the
                       determinism test holds fixed while execution keys vary.
                       Task belongs in it: two experiments differing only in
                       their task must not share a hash, or the Driver's refusal
                       to combine mismatched runs would not catch mixing them.
+                      Seeds are the one parameter excluded, because the runs of
+                      one experiment differ only in their seed.
     build hash        the experiment hash plus the compile-time execution keys.
                       Identifies one binary, and is what a binary checks.
 

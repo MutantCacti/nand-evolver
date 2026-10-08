@@ -11,14 +11,14 @@
 #include <stdlib.h>
 
 int packed_harness_deployment(const Model * model, Arena * arena,
-                              const DeploymentIO * io, unsigned tick_limit)
+                              const DeploymentIO * io, uint32_t tick_limit)
 {
     (void)model; (void)arena; (void)io; (void)tick_limit;
     abort();    /* stub */
 }
 
 int packed_harness_example(const Model * model, Arena * arena,
-                           const Example * example, unsigned tick_limit,
+                           const Example * example, uint32_t tick_limit,
                            word * outputs_out)
 {
     (void)model; (void)arena; (void)example; (void)tick_limit; (void)outputs_out;

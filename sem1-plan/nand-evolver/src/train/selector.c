@@ -9,6 +9,11 @@
 
 #include <stdlib.h>
 
+#if defined(TRAINING_SELECTOR_TOURNAMENT)
+
+/* Tournament selection. Truncation, lexicase and any other rule each add an
+ * #elif branch here; lexicase is the reason records arrive uncombined. */
+
 int selector_select(const Config * config,
                     const Record * records,
                     size_t num_individuals, size_t num_examples,
@@ -19,3 +24,7 @@ int selector_select(const Config * config,
     (void)seed; (void)generation; (void)parents; (void)num_parents;
     abort();    /* stub */
 }
+
+#else
+#error "training.selector names no Selector this build provides"
+#endif

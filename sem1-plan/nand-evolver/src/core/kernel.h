@@ -31,7 +31,7 @@
  * The whole of the Kernel's boundary. The Tick level is one function too, but a
  * private one: only the round calls it, so a test reaches it by running a round
  * with a tick limit of 1. The ready check is private for the same reason. */
-unsigned lane_kernel_round(const Genome * genome, Arena * arena, unsigned tick_limit);
-unsigned packed_kernel_round(const Model * model, Arena * arena, unsigned tick_limit);
+uint32_t lane_kernel_round(const Genome * genome, Arena * arena, uint32_t tick_limit);
+uint32_t packed_kernel_round(const Model * model, Arena * arena, uint32_t tick_limit);
 
 #endif

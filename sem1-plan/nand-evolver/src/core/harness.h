@@ -75,7 +75,7 @@ HarnessHooks;
  * Record per example. The caller decides how examples were divided. */
 int lane_harness_individual(const Genome * genome, Arena * arena,
                             const Example * examples, size_t num_examples,
-                            const HarnessHooks * hooks, unsigned tick_limit,
+                            const HarnessHooks * hooks, uint32_t tick_limit,
                             Record * records_out);
 
 /* Example: one lane group of up to WORD_BITS examples, packed into lanes.
@@ -87,7 +87,7 @@ int lane_harness_individual(const Genome * genome, Arena * arena,
  * example's arena, since the arena is cleared between examples. */
 int lane_harness_example(const Genome * genome, Arena * arena,
                          const Example * group, size_t group_size,
-                         const HarnessHooks * hooks, unsigned tick_limit,
+                         const HarnessHooks * hooks, uint32_t tick_limit,
                          Record * records_out);
 
 /* Where a deployed model's examples come from and where its answers go. Keeps
@@ -104,13 +104,13 @@ DeploymentIO;
 /* Deployment: one model running for as long as it is switched on. One input
  * record in, one output record out, lock-step. The model always answers. */
 int packed_harness_deployment(const Model * model, Arena * arena,
-                              const DeploymentIO * io, unsigned tick_limit);
+                              const DeploymentIO * io, uint32_t tick_limit);
 
 /* Example: one example's rounds, one bit per wire. Public for the same reason
  * as its lane counterpart: deployment reads a stream, so the test needs this
  * in-memory entry instead. */
 int packed_harness_example(const Model * model, Arena * arena,
-                           const Example * example, unsigned tick_limit,
+                           const Example * example, uint32_t tick_limit,
                            word * outputs_out);
 
 #endif
