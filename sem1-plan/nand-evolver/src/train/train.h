@@ -27,21 +27,29 @@
 /* ---- config.c ---------------------------------------------------------- */
 
 /* The runtime half of an experiment file. Structural choices are #defines, so
- * only numbers live here. Grows with the experiment-file schema. */
+ * only numbers live here. Grows with the experiment-file schema.
+ *
+ * Two hashes, because two different things need identifying. The experiment
+ * hash covers protocol, training, inference and parameter keys: it identifies
+ * results, keys runs/, and is what the determinism test holds fixed. The build
+ * hash adds the compile-time execution keys: it identifies this binary. */
 typedef struct
 {
     const char * name;          /* the experiment file's own filename, less .cfg */
-    uint64_t hash;              /* of the experiment file; checked against the binary's */
+    uint64_t experiment_hash;
+    uint64_t build_hash;
 
     size_t population;
     unsigned generations;
     unsigned tick_limit;
     size_t address_slack;       /* wire space beyond what the genome drives */
+
+    unsigned threads;           /* execution.threads, read at start-up */
 }
 Config;
 
-/* Read a flat key = value experiment file. Refuses one whose hash differs from
- * the hash compiled into this binary. */
+/* Read a flat key = value experiment file, execution keys included. Refuses one
+ * whose build hash differs from the hash compiled into this binary. */
 int config_load(Config * config, const char * path);
 
 /* ---- dataset.c --------------------------------------------------------- */
@@ -90,9 +98,10 @@ typedef struct
 Population;
 
 /* Run: generations from one seed, then hand the best genome to the Exporter.
- * The one place work is split, so threads enter and leave here. */
+ * The one place work is split, so threads enter and leave here. How many is
+ * config->threads, an execution key, not a command-line argument. */
 int evolver_run(const Config * config, const Dataset * dataset,
-                uint64_t seed, unsigned threads, const char * run_dir);
+                uint64_t seed, const char * run_dir);
 
 /* Generation: measure every individual, then Selector and then Mutator. */
 int evolver_generation(const Config * config, const Dataset * dataset,

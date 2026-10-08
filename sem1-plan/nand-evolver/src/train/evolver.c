@@ -10,9 +10,9 @@
 #include <stdlib.h>
 
 int evolver_run(const Config * config, const Dataset * dataset,
-                uint64_t seed, unsigned threads, const char * run_dir)
+                uint64_t seed, const char * run_dir)
 {
-    (void)config; (void)dataset; (void)seed; (void)threads; (void)run_dir;
+    (void)config; (void)dataset; (void)seed; (void)run_dir;
     abort();    /* stub */
 }
 

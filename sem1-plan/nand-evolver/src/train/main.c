@@ -1,6 +1,8 @@
 /*
  * train/main.c
- * One Run: an experiment file, a seed and a thread count, handed to the Evolver. The Driver owns the loop over runs, so one invocation is one run.
+ * One Run: an experiment file and a seed, handed to the Evolver. The Driver owns
+ * the loop over runs, so one invocation is one run. The thread count is an
+ * execution key in the experiment file, not an argument.
  *
  * Created: 2026-10-08
  *  Author: Maxence Morel Dierckx

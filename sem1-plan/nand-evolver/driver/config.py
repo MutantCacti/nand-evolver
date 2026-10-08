@@ -2,18 +2,27 @@
 
 The experiment file schema and its hash.
 
-Flat `key = value` with dotted keys, readable by Python and C alike. Six
+Flat `key = value` with dotted keys, readable by Python and C alike. Seven
 prefixes, matching ARCHITECTURE's taxonomy:
 
     protocol.*      train and infer must agree, or a saved genome changes meaning
     training.*      fixed for train, absent from infer
     inference.*     fixed for infer, absent from train
     parameter.*     numbers, read at start-up
+    execution.*     time and memory, never output: threads, backend, lane width
     task.*          which problem, and how its data becomes bits
     replicate.*     the seeds
 
-Execution has no prefix: thread count, machine and compiler flags are
-command-line or build facts, outside the hash, recorded in the run log.
+Two hashes, because two different things need identifying:
+
+    experiment hash   protocol + training + inference + parameter. Identifies
+                      results, keys runs/, and is what the determinism test
+                      holds fixed while execution keys vary.
+    build hash        the experiment hash plus the compile-time execution keys.
+                      Identifies one binary, and is what a binary checks.
+
+The machine itself -- CPU model, OS, compiler version -- is never configured and
+always recorded, so runtime comparisons are only valid within one machine.
 
 A name is never written in the file; it is the experiment file's own filename,
 so `mux.cfg` is the experiment named 'mux'.
@@ -33,6 +42,11 @@ def name_of(path):
     raise NotImplementedError
 
 
-def hash_of(config):
-    """The hash of an experiment file, stored in build/<name>/ and checked by the binary."""
+def experiment_hash(config):
+    """Hash of the keys that change results. Keys runs/ and guards mixing runs."""
+    raise NotImplementedError
+
+
+def build_hash(config):
+    """Hash of the keys that change the binary: the experiment hash plus compile-time execution."""
     raise NotImplementedError
