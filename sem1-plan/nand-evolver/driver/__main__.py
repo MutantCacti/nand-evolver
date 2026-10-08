@@ -10,6 +10,8 @@ its file name, never by path or hash.
     python -m driver plot <experiment|study> [--type loss]
     python -m driver list                            experiments, studies and their runs
 
+`main` is importable, for the tests; the module runs it only when executed.
+
 Created: 2026-10-08
  Author: Maxence Morel Dierckx
 """

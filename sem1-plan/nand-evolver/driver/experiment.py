@@ -15,5 +15,6 @@ Created: 2026-10-08
 
 def load(name):
     """Read experiments/<name>.cfg, refuse unknown prefixes, and return an Experiment
-    carrying its keys, its experiment hash and its build hash."""
+    with `.name`, `.keys` (key → value text), `.hash` (the experiment hash) and
+    `.build_hash`."""
     raise NotImplementedError

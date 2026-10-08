@@ -11,5 +11,6 @@ Created: 2026-10-08
 
 def exchange(process, rounds, m):
     """Reset a running infer process, send one example's rounds, and return the
-    m output bits answered for each."""
+    m output bits answered for each. A round's bits are a sequence of 0 and 1,
+    input wire k at index k, packed LSB-first into the record."""
     raise NotImplementedError

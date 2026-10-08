@@ -65,13 +65,16 @@ nand-evolver/
 │   └── infer/                  # the product
 │       ├── main.c              # Deployment: compiled-in model; loops over records (0x00 reset, 0x01 input), one output record per input record
 │       └── records.h           # the record format: the one-byte kind, and the length of an input record
-├── tests/
-│   ├── test_protocol.c         # README semantics: constant 0, reserved inputs, ready, tick limit, reverse-order writeback, and that every Arena word stays all-zero or all-one
-│   ├── test_canonical.c        # a genome and its canonical form behave identically
-│   ├── test_lookup.c           # example lookup is pure: same (seed, generation, position) → same example
-│   ├── test_resume.c           # stop at a generation boundary and resume → bit-identical to an uninterrupted run
-│   ├── test_records.py         # cross-program: one multi-round example through train, and through infer as 0x01 records → same outputs
-│   └── test_determinism.py     # same experiment hash and seed, varying every execution key → identical model file, checkpoints and per-generation records
+├── tests/                      # `make test NAME=<experiment>` for C; `python -m pytest tests` for Python
+│   ├── check.h                 # the C tests' one assertion: report, count, continue
+│   ├── test_protocol.c         # README semantics through the Harness and Kernel: ready, tick limit, synchronous ticks, reverse-order writeback, ready start per round, lifetime and reset, initial state, reserved wires, and every word all-zero or all-one
+│   ├── test_lookup.c           # example lookup is pure: same (seed, generation, position) → same example, in any call order
+│   ├── probe.c                 # fixture: a hand-written genome through train's Harness, then exported (`make probe NAME=<experiment>`)
+│   ├── conftest.py             # a private workbench per test (driver/paths.py redirected) and a tiny experiment
+│   ├── test_records.py         # cross-program: probe's answers vs infer's over records, multi-round, one process or many; also canonicalisation preserves behaviour
+│   ├── test_resume.py          # train killed at random moments and restarted → bit-identical model and generation records
+│   ├── test_determinism.py     # same experiment hash and seed, varying execution keys → identical model file, checkpoints and per-generation records
+│   └── test_driver.py          # targets, hashes, stamps, the Dataset file, record framing; runs, studies, gathering, evaluation, the command line
 ├── build/<name>/               # generated, git-ignored: config.h, model_data.h (the model as Nands, for infer), the build hash, binaries
 ├── runs/<name>/<seed>/         # generated, git-ignored: the experiment hash, run log, checkpoints, model file, report
 ├── data/                       # raw Sources (MNIST), git-ignored
