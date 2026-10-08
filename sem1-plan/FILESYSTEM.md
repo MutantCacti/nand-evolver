@@ -15,7 +15,7 @@ nand-evolver/
 │   ├── paths.py                # every directory the Driver reads or writes, named once
 │   ├── experiment.py           # an experiment file read: keys by prefix, experiment hash, build hash
 │   ├── stamp.py                # skipping finished work: every output is stamped with a key computed from its inputs
-│   ├── build.py                # compile-time keys → config.h → make; the word type; the experiment file embedded in train; infer gets model.h
+│   ├── build.py                # compile-time keys → config.h → make; the word type; the experiment file embedded in train; infer gets model_data.h
 │   ├── sources.py              # raw task data: XOR/MUX truth tables, MNIST files; raw bits and labels, never encoded
 │   ├── targets.py              # each target convention, both directions: label → expected bits and back (raw, onehot)
 │   ├── dataset.py              # Source → Dataset files: bits chunked into rounds, expected bits on graded rounds; one file per split
