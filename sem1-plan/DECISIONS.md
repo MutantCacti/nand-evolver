@@ -160,7 +160,7 @@ The first stubs were retired (`sem1-plan/nand-evolver-old/`, kept for reference 
 | 9 | Per-lane results | Ticks and error are per lane from the start (arrays, even at width 1). Finished lanes freeze: `new = (old & done) \| (next & ~done)`. |
 | 10 | Tests | `test_protocol` asserts every Arena word is `0` or all ones after every tick (P1). A Python cross-program test runs one multi-round example through train and through infer as `0x01` records, and compares. The lane-vs-packed differential test returns in P2 as a lane-width test. |
 | 11 | Config | **Never passed.** Compile-time keys are `#define`s; run-time parameters are one global, read-only after start-up. |
-| 12 | Seeds | `experiment.seeds`: a list, at the top of the experiment file, in the experiment hash. It is not program configuration. The `replicate.*` prefix is removed. |
+| 12 | Seeds | Not program configuration and **outside the experiment hash**, which covers only what is computed. Where seeds are stated (experiment file, Driver command line or Study) is open. The `replicate.*` prefix is removed. |
 | 13 | Naming | Component first (`harness_*`, `kernel_*`); the type distinguishes genome from model; layout never appears in a name. |
 | 14 | Logs | Ordered by wall time: only generations have a real order, and no log may ever be out of generation order (mutant, 2B review 2nd iteration). Forbidden key combinations are stated once, in `core/compat.h`, as `#error`. |
 | 15 | Expectation | Seq MNIST results wait for P2's lanes. XOR, MUX and MNIST do not. |
