@@ -16,7 +16,7 @@ The structs defining the memory space and Nand gates are in [`src/core/genome.h`
 
 ## Protocol
 
-Everything in this section describes a deployed model and the embedder that runs it. Training runs models under the same protocol, acting as their embedder; only the memory costs in the next section are specific to training.
+The protocol by which an embedder consults the model for responses to its requests. Training embeds models under the same protocol..
 
 ### Memory space
 
