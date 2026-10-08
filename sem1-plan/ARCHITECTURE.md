@@ -130,74 +130,71 @@ Evaluating several finished genomes against held-out examples is the **Driver's*
 
 ```
 Experiment
-┌──────────────────────────────────────────────────────────────────────────────────────────┐
-│                  ┌─────────┐      ┌────────┐                      ┌────────┐             │
-│                  │ Dataset │<─────┤ Driver ├─────────────────────>│ Config │             │
-│                  └────┬────┘      └───┬────┘                      └────────┘             │
-│ Run                   │               │                                                  │
-│ ┌─────────────────────↓───────────────↓────────────────────────────────────────────────┐ │
-│ │                     │            ┌─────┐                                             │ │
-│ │                     │            │ Rng │                                             │ │
-│ │                     │            └──┬──┘                                             │ │
-│ │ Generation          │               │                                                │ │
-│ │ ┌───────────────────┼───────────────↓──────────────────────────────────────────────┐ │ │
-│ │ │ Example           │                                                              │ │ │
-│ │ │ ┌─────────────────┼────────────────────────────────────────────────────────────┐ │ │ │
-│ │ │ │ Round           │                                                            │ │ │ │
-│ │ │ │ ┌───────────────┼──────────────────────────────────────────────────────────┐ │ │ │ │
-│ │ │ │ │               └──────────────>┌─────────┐                                │ │ │ │ │
-│ │ │ │ │                               │ Harness │<──────────────┐                │ │ │ │ │
-│ │ │ │ │                               └────┬────┘               │                │ │ │ │ │
-│ │ │ │ │ Tick                               │                    │                │ │ │ │ │
-│ │ │ │ │ ┌──────────────────────────────────↓──────────────────┐ │                │ │ │ │ │
-│ │ │ │ │ │  ┌────────┐      ┌────────┐      ┌───────┐          │ │                │ │ │ │ │
-│ │ │ │ │ │  │ Genome ├─────>│ Kernel ├─────>│ Arena ├──────────┼─┘                │ │ │ │ │
-│ │ │ │ │ │  └───↑────┘      └────────┘      └───┬───┘          │                  │ │ │ │ │
-│ │ │ │ │ └──────┼───────────────────────────────┼──────────────┘                  │ │ │ │ │
-│ │ │ │ └────────┼───────────────────────────────┼─────────────────────────────────┘ │ │ │ │
-│ │ │ │          │                          ┌────↓─────┐                             │ │ │ │
-│ │ │ │          │                          │ Verifier │                             │ │ │ │
-│ │ │ │          │                          └────┬─────┘                             │ │ │ │
-│ │ │ └──────────┼───────────────────────────────┼───────────────────────────────────┘ │ │ │
-│ │ │        ┌───┴─────┐                  │                                            │ │ │
-│ │ │        │ Trainer │<─────────────────┤                                            │ │ │
-│ │ │        └─────────┘                  │                                            │ │ │
-│ │ │                                     │                                            │ │ │
-│ │ │        ┌─────────┐         ┌────────↓─┐                                          │ │ │
-│ │ │        │ Mutator │<────────┤ Selector │                                          │ │ │
-│ │ │        └───┬─────┘         └──────────┘                                          │ │ │
-│ │ └────────────┼─────────────────────────────────────────────────────────────────────┘ │ │
-│ │              └─────────────────↓                                                     │ │
-│ │                           ┌─────────┐                                                │ │
-│ │                           │ Evolver │                                                │ │
-│ │                           └────┬────┘                                                │ │
-│ │                           ┌────↓─────┐        ┌────────┐                             │ │
-│ │                           │ Exporter │        │ Logger │<─ any component             │ │
-│ │                           └────┬─────┘        └───┬────┘                             │ │
-│ └────────────────────────────────┼──────────────────┼──────────────────────────────────┘ │
-│                              ┌───↓───┐           ┌──↓──┐                                 │
-│                              │ Model │           │ Log │                                 │
-│                              └───────┘           └─────┘                                 │
-└──────────────────────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│            ┌─────────┐      ┌───↓────┐      ┌────────┐             │
+│            │ Dataset │<─────┤ Driver ├─────>│ Config │             │
+│            └────┬────┘      └───┬────┘      └────────┘             │
+│ Run             │               │                                  │
+│ ┌───────────────↓───────────────↓────────────────────────────────┐ │
+│ │               │            ┌─────┐                             │ │
+│ │               │            │ Rng │                             │ │
+│ │               │            └──┬──┘                             │ │
+│ │ Generation    │               │                                │ │
+│ │ ┌─────────────┼───────────────↓──────────────────────────────┐ │ │
+│ │ │ Example     │          any component                       │ │ │
+│ │ │ ┌───────────┼────────────────────────────────────────────┐ │ │ │
+│ │ │ │ Round     │                                            │ │ │ │
+│ │ │ │ ┌─────────┼──────────────────────────────────────────┐ │ │ │ │
+│ │ │ │ │         │         ┌─────────┐                      │ │ │ │ │
+│ │ │ │ │         └────────>│ Harness │<─────────┐           │ │ │ │ │
+│ │ │ │ │                   └────┬────┘          │           │ │ │ │ │
+│ │ │ │ │ Tick                   │               │           │ │ │ │ │
+│ │ │ │ │ ┌──────────────────────↓───────────────┼──────┐    │ │ │ │ │
+│ │ │ │ │ │  ┌────────┐      ┌────────┐      ┌───┴───┐  │    │ │ │ │ │
+│ │ │ │ │ │  │ Genome ├─────>│ Kernel ├─────>│ Arena │  │    │ │ │ │ │
+│ │ │ │ │ │  └───↑────┘      └────────┘      └───┬───┘  │    │ │ │ │ │
+│ │ │ │ │ └──────┼───────────────────────────────┼──────┘    │ │ │ │ │
+│ │ │ │ └────────┼───────────────────────────────┼───────────┘ │ │ │ │
+│ │ │ │          │                          ┌────↓─────┐       │ │ │ │
+│ │ │ │          │                          │ Verifier │       │ │ │ │
+│ │ │ │          │                          └────┬─────┘       │ │ │ │
+│ │ │ └──────────┼───────────────────────────────┼─────────────┘ │ │ │
+│ │ │        ┌───┴─────┐                         │               │ │ │
+│ │ │        │ Trainer │<────────────────────────┤               │ │ │
+│ │ │        └─────────┘                         │               │ │ │
+│ │ │                                            │               │ │ │
+│ │ │        ┌─────────┐                    ┌────↓─────┐         │ │ │
+│ │ │        │ Mutator │<───────────────────┤ Selector │         │ │ │
+│ │ │        └────┬────┘                    └──────────┘         │ │ │
+│ │ └─────────────┼──────────────────────────────────────────────┘ │ │
+│ │               │                                                │ │
+│ │          ┌────↓────┐                                           │ │
+│ │          │ Evolver │                    any component          │ │
+│ │          └────┬────┘                         ┬                 │ │
+│ │          ┌────↓─────┐                    ┌───↓────┐            │ │
+│ │          │ Exporter │                    │ Logger │            │ │
+│ │          └────┬─────┘                    └───┬────┘            │ │
+│ └───────────────┼──────────────────────────────┼─────────────────┘ │
+│             ┌───↓───┐                       ┌──↓──┐                │
+│             │ Model │                       │ Log │                │
+│             └───↓───┘                       └──↓──┘                │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
 The Evolver appears at the bottom because it owns Run, Generation and Example: the boxes drawn inside those are the levels its loops repeat. The **Config** has no arrow leaving it because it is a read-only global, read wherever it is needed rather than passed down. The **Trainer**'s arrow points back up into the Genome: it rewrites the genome between examples, which is why its examples must run in order and why it exists only in the individual-mode variant of the Evolver.
 
 ## Configurations
 
-Five kinds of choice are configured, in decreasing scope:
+Six kinds of choice are configured, in decreasing scope:
 
 - **Protocol** — train and infer must agree, or a saved genome means something different in each: how the Kernel schedules Nands, ready's start value, and which ready value means ready.
 - **Training** — fixed for train, and absent from infer: whether a Trainer exists, how the Selector compares genomes, etc.
 - **Inference** — fixed for infer, and absent from train: whether to parallelise, how to allocate the arena (runtime optimisations), etc.
 - **Parameter** — fixed within one execution: rates, limits, maximums e.g. population size, tick timeout.
 - **Execution** — choices that change runtime and memory usage but never output, e.g. thread count, the width of a word, how many examples share one, CPU or GPU implementation.
+- **Task** — which problem is being solved: its source, bit order, target convention, rounds per example and graded rounds.
 
 Training and inference configurations are collectively referred to as **algorithm** configurations.
-
-One more describes the work rather than the program:
-
-- **Task** — which problem is being solved: its source, bit order, target convention, rounds per example and graded rounds.
 
 Each kind is a prefix on the keys of the experiment file (`protocol.`, `training.`, `inference.`, `parameter.`, `execution.`, `task.`), so a key's kind is visible wherever it is written.
 

@@ -14,7 +14,7 @@ nand-evolver/
 │   ├── __main__.py             # `python -m driver run <experiment>` | `list` | `plot --type loss <experiment|study>`
 │   ├── experiment.py           # Experiment (main entry): run its stages, skipping any whose outputs already exist
 │   ├── study.py                # Study: a named set of experiments, recoverable from runs made independently
-│   ├── config.py               # experiment file schema (protocol, training, inference, parameter, execution, task); experiment and build hashes          
+│   ├── config.py               # experiment file schema (protocol, training, inference, parameter, execution, task); experiment and build hashes
 │   ├── build.py                # protocol + algorithm choices → -D flags → make; sets the word type; embeds the experiment file and the model
 │   ├── sources.py              # raw task data readers (XOR/MUX tables, MNIST files)
 │   ├── targets.py              # each target convention, both directions: label → expected bits and back (raw bits, one-hot)
