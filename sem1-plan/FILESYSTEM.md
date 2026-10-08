@@ -11,23 +11,30 @@ The planned layout of the nand-evolver codebase, derived from `ARCHITECTURE.md`.
 ```shell
 nand-evolver/
 ├── driver/                     # Driver (Study, Experiment). Python workbench tooling, never shipped; expected to change
-│   ├── __main__.py             # `python -m driver run <experiment>` | `list` | `plot --type loss <experiment|study>`
-│   ├── experiment.py           # Experiment (main entry): run its stages, skipping any whose outputs already exist
-│   ├── study.py                # Study: a named set of experiments, recoverable from runs made independently
-│   ├── config.py               # experiment file schema (protocol, training, inference, parameter, execution, task); experiment and build hashes
-│   ├── build.py                # protocol + algorithm choices → -D flags → make; sets the word type; embeds the experiment file and the model
-│   ├── sources.py              # raw task data readers (XOR/MUX tables, MNIST files)
-│   ├── targets.py              # each target convention, both directions: label → expected bits and back (raw bits, one-hot)
-│   ├── dataset.py              # Source → Dataset files: raw data flattened to bits and chunked into rounds, expected bits via targets.py, graded flags; one file per split (train, validation, test), once per experiment
-│   ├── evaluate.py             # held-out evaluation: drives infer over stdin/stdout as records, maps output bits back through targets.py, compares with labels → accuracy; time, memory, energy
-│   ├── report.py               # run logs + execution choices + machine → report
-│   └── plot.py                 # run logs → figures (e.g. loss vs time per experiment)
-├── experiments/                # experiment files (the Config); each has a human-readable `name`
+│   ├── __main__.py             # `python -m driver run <experiment> [--seed N]` | `evaluate` | `study <study>` | `report` | `plot` | `list`
+│   ├── paths.py                # every directory the Driver reads or writes, named once
+│   ├── experiment.py           # an experiment file read: keys by prefix, experiment hash, build hash
+│   ├── stamp.py                # skipping finished work: every output is stamped with a key computed from its inputs
+│   ├── build.py                # experiment file → config.h (every key a #define) → make; the word type; infer gets model.h
+│   ├── sources.py              # raw task data: XOR/MUX truth tables, MNIST files; raw bits and labels, never encoded
+│   ├── targets.py              # each target convention, both directions: label → expected bits and back (raw, onehot)
+│   ├── dataset.py              # Source → Dataset files: bits chunked into rounds, expected bits on graded rounds; one file per split
+│   ├── run.py                  # one Run (main entry): build train, Dataset, record the run, call train; a seed is drawn and recorded when absent
+│   ├── runs.py                 # finished runs gathered by directory, counted only when their experiment hash matches
+│   ├── machine.py              # the machine, recorded with every run, never configured
+│   ├── records.py              # the README's records from the embedder's side: reset, then one example's rounds
+│   ├── evaluate.py             # held-out evaluation of one run's model: infer over records, answers through targets.py → accuracy
+│   ├── log.py                  # reading a run log: JSON lines, unknown events skipped
+│   ├── study.py                # Study: experiments and the seeds they share; runs and evaluates every pair
+│   ├── report.py               # gathered runs + execution keys + machine → report
+│   └── plot.py                 # gathered runs → figures (e.g. error vs time, one line per experiment)
+├── experiments/                # experiment files; the name is the file name. Every key is compiled in; no seeds
 │   ├── xor.cfg
 │   ├── mux.cfg
 │   ├── mnist.cfg
 │   └── seqmnist.cfg            # MNIST fed one row per round: 28 rounds, last graded
-├── studies/                    # one file per Study: its name and the names of its experiments
+├── studies/                    # one file per Study: its experiments and the seeds they share
+│   └── tasks.cfg               # the four P1 tasks on one figure
 ├── src/
 │   ├── core/                   # shared by train and infer
 │   │   ├── compat.h            # every forbidden combination of keys, each an #error naming the pair; included by every translation unit
@@ -92,15 +99,16 @@ nand-evolver/
 - **Results are per example, never per group.** `verifier_verify` writes an error per example and the Kernel reports ticks per example, as arrays. At the reference width each array has one entry; when one word later holds many examples the same code is already right, and the number of examples per word cannot change a result.
 - **The Driver is stateless; runs keep everything.**
   - `runs/` holds full-detail logs, so scores and plots can be recomputed without re-running.
-  - A Study names its experiments, so experiments run independently can later be gathered as one.
-- **Driver stages** for one experiment, each skipped when its outputs exist:
-  1. build
-  2. Dataset file
-  3. train, once per seed
-  4. build infer with the chosen model
-  5. evaluate on held-out examples
-  6. report
-- **Splits are stated once.** `dataset.py` writes the train, validation and test splits as separate Dataset files, deterministically from the experiment file and seed, so no split logic exists in C. Example order within the train file is a lookup, never affected by execution order.
+  - Runs are found by directory, never by a list kept elsewhere, so runs made independently are gathered alike.
+- **The Run is the Driver's unit.** `driver run <experiment>` makes one Run, each step skipped when its stamp is fresh:
+  1. build train
+  2. Dataset files
+  3. record the run (experiment file, experiment hash, machine, seed)
+  4. train, which resumes from its checkpoints
+
+  `driver evaluate` builds infer with a run's model and evaluates it on held-out examples. `driver study` does both for every (experiment, seed) pair a Study names.
+- **Seeds name runs.** A run's seed is given on the command line, or drawn from the operating system and recorded when absent. A Study names the seeds its experiments share, which makes its comparison paired: noise from seed choice cancels between lines.
+- **Splits are stated once.** `dataset.py` writes the train, validation and test splits as separate Dataset files, deterministically from the experiment file alone, so every seed shares them and no split logic exists in C. Example order within the train file is a lookup, never affected by execution order.
 
 ## Decisions this plan made beyond ARCHITECTURE.md
 
