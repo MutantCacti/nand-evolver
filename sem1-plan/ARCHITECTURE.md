@@ -179,12 +179,14 @@ Experiment
 Three kinds of choice distinguish one version of the program from another, in decreasing scope:
 
 - **Protocol** — train and infer must agree, or a saved genome means something different in each: how the Kernel schedules Nands, ready's start value, and which ready value means ready.
-- **Algorithm** — fixed for one execution of train, and absent from infer: whether a Trainer exists, how the Selector compares individuals, whether a child starts from a copy of its parent's memory space.
-- **Parameter** — may vary within one execution: rates, limits, population size, the tick maximum.
+- **Training** — fixed for train, and absent from infer: whether a Trainer exists, how the Selector compares individuals, etc.
+- **Inference** — fixed for infer, and absent from train: whether to parallelise, how to allocate the arena (runtime optimisations), etc.
+- **Parameter** — fixed within one execution: rates, limits, maximums e.g. population size, tick timeout.
+- **Execution** — parameters that vary runtime and memory usage but not output, e.g. thread count, word size, platform.
 
-Three further things vary between experiments, around the program rather than within it: the **task** being solved, the **execution** (thread count, word size, target machine — these change how long a run takes and never what it produces), and the **replicate** (the seed).
+Training and inference configurations are collectively referred to as **algorithm** configurations.
 
-Each of those has a unit one level up in the tree, or none at all: the task varies between Experiments, the replicate between Runs, and the execution between nothing, because it never changes what a run produces.
+Two further things vary between experiments, around the program rather than within it: the **task** being solved, and the **replicate** (the seed). The task varies between Experiments, the replicate between Runs.
 
 ## Rules the structure follows
 
@@ -200,7 +202,6 @@ Each of those has a unit one level up in the tree, or none at all: the task vari
 
 In training, each wire is stored as one 64-bit word rather than one bit, as the README's memory section describes. Bit k of every word belongs to example k, so one pass over the Nands evaluates 64 examples at once. This packing is a property of how the Harness and Kernel are written for train. It does not change any level in the tree, and infer stores one bit per wire instead.
 
-## Open questions, settled by implementation
+## Open questions
 
-- Whether evolution is best expressed as one component or as Selector + Mutator.
-- Whether a component always sits at the level where all of its inputs exist.
+- Whether evolution is best expressed as one component or as Selector + Mutator. It's possible that smarter mutation would involve knowing scores or relative performance.

@@ -77,6 +77,7 @@ nand-evolver/
   - Every experiment file has a human-readable `name`. `build/`, `runs/` and `data/` are git-ignored but meant to be read: they are keyed by name, so an agent can read outputs without the Driver.
   - The hash is stored inside `build/<name>/` and checked by the binary; it's never used as a path.
   - Every run directory records its hash too. The Driver refuses to combine runs whose hashes differ under one name, so editing an experiment without renaming it can't silently mix results.
+  - Names come directly from the actual file name of the experiment file. For example, the `name` of `mux.cfg` is 'mux'.
 - **Configuration flows down.**
   - **Experiment files** are flat `key = value` with dotted keys (`protocol.kernel = reference`, `algorithm.selector = tournament`, `parameter.population = 256`), readable by Python and C alike.
   - **`build.py`** writes `build/<name>/config.h` as `#define`s from the protocol and algorithm keys, and embeds the experiment file in `train`. infer gets a protocol-only header (e.g. the Kernel scheme), so the deployed program never sees algorithm keys. `core/` headers read those protocol `#define`s.
