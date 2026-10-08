@@ -188,26 +188,27 @@ The Evolver appears at the bottom because it owns Run, Generation and Example: t
 Five kinds of choice are configured, in decreasing scope:
 
 - **Protocol** — train and infer must agree, or a saved genome means something different in each: how the Kernel schedules Nands, ready's start value, and which ready value means ready.
-- **Training** — fixed for train, and absent from infer: whether a Trainer exists, how the Selector compares individuals, etc.
+- **Training** — fixed for train, and absent from infer: whether a Trainer exists, how the Selector compares genomes, etc.
 - **Inference** — fixed for infer, and absent from train: whether to parallelise, how to allocate the arena (runtime optimisations), etc.
 - **Parameter** — fixed within one execution: rates, limits, maximums e.g. population size, tick timeout.
 - **Execution** — choices that change runtime and memory usage but never output, e.g. thread count, the width of a word, how many examples share one, CPU or GPU implementation.
 
 Training and inference configurations are collectively referred to as **algorithm** configurations.
 
-Two more describe the work rather than the program:
+One more describes the work rather than the program:
 
 - **Task** — which problem is being solved: its source, bit order, target convention, rounds per example and graded rounds.
-- **Experiment** — what the Driver does with the experiment, and nothing the C programs ever read: which seeds to run, for instance.
 
-Each kind is a prefix on the keys of the experiment file (`protocol.`, `training.`, `inference.`, `parameter.`, `execution.`, `task.`, `experiment.`), so a key's kind is visible wherever it is written.
+Each kind is a prefix on the keys of the experiment file (`protocol.`, `training.`, `inference.`, `parameter.`, `execution.`, `task.`), so a key's kind is visible wherever it is written.
+
+The **seed** is not configuration of any of these kinds. It names one Run within an experiment rather than describing the search, and where it is stated — a Driver argument, the experiment file, or a Study naming the seeds its experiments share — is undecided.
 
 Two hashes follow from this, and neither is ever used as a path:
 
 - The **experiment hash** covers `protocol.`, `training.`, `inference.`, `parameter.` and `task.`, and identifies a *result*. Every run directory records it, and the Driver refuses to combine runs whose hashes differ.
 - The **build hash** adds the execution keys fixed at compile time, and identifies a *binary*.
 
-Both exclusions are whole prefixes rather than named keys. `execution.` is excluded because runs that differ only in execution must give identical results, which is tested. `experiment.` is excluded because it describes the Driver's conduct, not the search: adding a seed to a study must not invalidate the runs already made under it.
+`execution.` is excluded as a whole prefix, because runs that differ only in execution must give identical results, which is tested. **The seed is excluded too**: it is the one thing that varies between the runs of one experiment, so a hash that included it would identify a run rather than a result, and adding a seed later would invalidate the runs already made.
 
 Some combinations of keys cannot be built together. They are refused in **one place**, as a compile error naming the pair, rather than by each file checking the combinations that happen to reach it: a file that guards its own is a file that can disagree with another.
 
