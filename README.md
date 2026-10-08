@@ -14,7 +14,11 @@ We allocate a flat memory space to model computation. Nand gates are defined as 
 
 The structs defining the memory space and Nand gates are in [`src/core/genome.h`](./src/core/genome.h).
 
-### Protocol
+## Protocol
+
+Everything in this section describes a deployed model and the embedder that runs it. Training runs models under the same protocol, acting as their embedder; only the memory costs in the next section are specific to training.
+
+### Memory space
 
 The memory space is segmented by an I/O protocol:
 
@@ -32,7 +36,7 @@ Where
 - `m` is the size of the output in bits
 - `n` is the total address space in bits
 
-Bits `[0, i]` are reserved for input and thus enforced read only at training. Bits `[i+1, n)` are the model's own memory and read-writeable.
+Bits `[0, i]` are reserved for input and thus read only to the model. Bits `[i+1, n)` are the model's own memory and read-writeable.
 
 Nand input indices may range over `[0, n)`. Nand output indices may only range over `[i+1, n)`.
 
@@ -46,7 +50,7 @@ Execution is synchronous to an internal tick rate. Nands can be evaluated in par
 
 A **round** is one exchange: the embedder writes the input space, the model runs until it sets ready or a tick limit is reached, and the embedder reads the output space. The model always answers: at the tick limit, the output space is read as it stands.
 
-An **example** is a sequence of one or more rounds. The memory space persists between the rounds of an example, so a model can carry state from one round to the next, and is reset between examples, so it never carries state from one example to the next. A reset sets every wire to 0, or to a stored initial memory state when the model has one.
+An **example** is a sequence of one or more rounds. The memory space persists between the rounds of an example, so a model can carry state from one round to the next, and is reset between examples, so it never carries state from one example to the next. A reset sets every wire to 0, or to the model's initial memory state when it has one.
 
 ### Records
 
@@ -76,11 +80,11 @@ During training, exported genomes are canonicalised to an optimised form.
 - Bits in the genome's output space that are never written to are removed, and input indices pointing to them are replaced with zero.
 - Following the prior step, the output space equals the number of Nands. Nands are stripped of their output index and re-ordered in `Genome.nands` such that their index there corresponds to their output index in the memory space.
 
-### Memory Complexity
+## Memory Complexity
 
 Let `N` be the number of Nands in a genome, equal to `Genome.num_nands`.
 
-#### At Training
+### At Training
 
 During training, the memory space is scaled with the number of inputs Nands might consume. The maximum size of the address space is therefore `i+1+2N` wires.
 
@@ -96,7 +100,7 @@ During training, memory complexity is `O(N log N)`.
 
 Every thread evaluating a batch needs its own address space and output buffer, so the state terms multiply by thread count while the genome term does not.
 
-#### At Runtime
+### At Runtime
 
 Canonicalised genomes are more efficient. The maximum size of their address space is `i+1+N`, with the output buffer again adding `N`.
 
@@ -108,7 +112,7 @@ The sum of these is `w(i+1+2N) + 2Nlog_2(i+1+N)`.
 
 At runtime, memory complexity is also `O(N log N)`.
 
-#### Deployment
+### Deployment
 
 Asymptotic memory complexity is `O(N log N)`, but the logarithmic term is read-only at compile time.
 
