@@ -58,7 +58,7 @@ Drafted by DELTA and THREAD. Full text of earlier rounds is in git history (roun
 ## Settled (round 2 additions, updated by 1C)
 
 - **Components by level:** Run and Generation are owned by the Evolver, which calls the Selector (cross-individual, never reads a genome) and the Mutator after each generation, and the Exporter at the end of a run. Individual and Example are owned by the Harness, which calls the Trainer (individual mode) between examples. Round has the Kernel (which owns Tick) and, in train, the Verifier.
-- **Variations:** a behavioural tree, protocol (train and infer must agree) > algorithm (fixed for one execution of train, absent from infer) > parameter (independent within one execution), with parameters scoped to their algorithm. **World axes:** task (varies between Experiments), execution (changes time, never results; no level), replicate (seed; varies between Runs; lines are means over seeds). Frontier execution (tick modulo, next-index) is protocol, and each scheduling scheme is an alternative Kernel.
+- **Variations:** a behavioural tree, protocol (train and infer must agree) > algorithm (fixed for one execution of train, absent from infer) > parameter (independent within one execution), with parameters scoped to their algorithm. **World axes:** task (varies between Experiments), replicate (seed; varies between Runs; lines are means over seeds). Execution is configured (see the 2B ruling below), and the machine is recorded, never configured. Frontier execution (tick modulo, next-index) is protocol, and each scheduling scheme is an alternative Kernel.
 - **Rounds:** a round is one input → ready → output handshake. An example is self-contained, order-independent, always parallelisable, and contains 1..R rounds with declared graded rounds. The arena persists across ticks and rounds and is cleared between examples. Streaming = one long example, chunked for parallelism.
 - **Configuration:** one experiment file per experiment is the single source of truth, and its schema is the taxonomy (binding time derived from tree position). Protocol and algorithm choices are compile-time; builds are cached by their hash (`build/<hash>/`). Parameters are runtime and accepted only from an experiment file whose hash matches the binary. The experiment file is embedded in the binary and emitted with every output. A figure is a set of experiment files. Config is a workbench artifact: the deployed program never sees one.
 
@@ -132,3 +132,13 @@ THREAD's restatement (round 4): **one authority, not one capability.** In the ex
 | — | Exporter, Logger | `canonical` → **Exporter**: canonicalises the best genome and writes the model file, so data leaves a run one way (Evolver → Exporter → model file). `log` → **Logger**: keeps the run log; every component writes its own events. Both are called components, not loop owners. Checkpoints stay with the Evolver: training form, read back only by it. |
 
 The filesystem plan is `FILESYSTEM.md`.
+
+## 2B rulings (mutant, 2026-10-08)
+
+| Topic | Ruling |
+|---|---|
+| Execution | **Explicit configuration** (`execution.*`: thread count, CPU/GPU backend, lane width, ...), compile-time or start-up as each key needs, so studies can compare runtimes. Defined by changing time and memory, never output. |
+| Hashes | The **experiment hash** (protocol, training, inference, parameter, task; not replicate or execution) identifies results, guards `runs/`, and is held fixed by the determinism test. The **build hash** adds compile-time execution keys and identifies a binary. |
+| Machine | Processor, OS and compiler version: never configured, always recorded in reports. Runtime comparisons are valid only on one machine. |
+| Determinism test | Extends from thread count to every execution key: same experiment hash and seed → identical results. |
+| Key prefixes | `protocol.*`, `training.*`, `inference.*`, `parameter.*`, `task.*`, `replicate.*`, `execution.*`. "Algorithm" is the collective term for training + inference, in prose only. |

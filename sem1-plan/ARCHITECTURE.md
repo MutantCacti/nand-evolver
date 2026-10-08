@@ -176,17 +176,17 @@ Experiment
 
 ## Configurations
 
-Three kinds of choice distinguish one version of the program from another, in decreasing scope:
+Five kinds of choice are configured, in decreasing scope:
 
 - **Protocol** — train and infer must agree, or a saved genome means something different in each: how the Kernel schedules Nands, ready's start value, and which ready value means ready.
 - **Training** — fixed for train, and absent from infer: whether a Trainer exists, how the Selector compares individuals, etc.
 - **Inference** — fixed for infer, and absent from train: whether to parallelise, how to allocate the arena (runtime optimisations), etc.
 - **Parameter** — fixed within one execution: rates, limits, maximums e.g. population size, tick timeout.
-- **Execution** — parameters that vary runtime and memory usage but not output, e.g. thread count, word size, platform.
+- **Execution** — choices that change runtime and memory usage but never output, e.g. thread count, word size, CPU or GPU implementation. Execution is configured explicitly so studies can compare it, but it is left out of the **experiment hash**, which identifies results from the protocol, training, inference, parameter and task choices (not the seed, which varies between the runs of one experiment). Runs that differ only in execution must give identical results, and that is tested. The **build hash** adds the execution choices fixed at compile time, and identifies a binary.
 
 Training and inference configurations are collectively referred to as **algorithm** configurations.
 
-Two further things vary between experiments, around the program rather than within it: the **task** being solved, and the **replicate** (the seed). The task varies between Experiments, the replicate between Runs.
+Two further things vary between experiments, around the program rather than within it: the **task** being solved, and the **replicate** (the seed). The **machine** (processor, operating system, compiler version) is never configured, only recorded in every report, so runtime comparisons are valid only between runs on the same machine. The task varies between Experiments, the replicate between Runs.
 
 ## Rules the structure follows
 

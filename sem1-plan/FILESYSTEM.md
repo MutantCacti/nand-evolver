@@ -12,13 +12,13 @@ nand-evolver/
 │   ├── __main__.py             # `python -m driver run <experiment>` | `list` | `plot --type loss <experiment|study>`
 │   ├── experiment.py           # Experiment (main entry): run its stages, skipping any whose outputs already exist
 │   ├── study.py                # Study: a named set of experiments, recoverable from runs made independently
-│   ├── config.py               # experiment file schema (protocol → algorithm → parameters; task, replicate) and its hash
+│   ├── config.py               # experiment file schema (protocol, training, inference, parameter, execution; task, replicate); experiment and build hashes
 │   ├── build.py                # protocol + algorithm choices → -D flags → make; embeds the experiment file and the model
 │   ├── sources.py              # raw task data readers (XOR/MUX tables, MNIST files)
 │   ├── targets.py              # each target convention, both directions: label → expected bits and back (raw bits, one-hot)
 │   ├── dataset.py              # Source → Dataset files: raw data flattened to bits and chunked into rounds, expected bits via targets.py, graded flags; one file per split (train, validation, test), once per experiment
 │   ├── evaluate.py             # held-out evaluation: drives infer over stdin/stdout, maps output bits back through targets.py, compares with labels → accuracy; time, memory, energy
-│   ├── report.py               # run logs + execution axes → report
+│   ├── report.py               # run logs + execution choices + machine → report
 │   └── plot.py                 # run logs → figures (e.g. loss vs time per experiment)
 ├── experiments/                # experiment files (the Config); each has a human-readable `name`
 │   ├── xor.cfg
@@ -39,7 +39,7 @@ nand-evolver/
 │   ├── train/                  # the search. Lane layout: one 64-bit word per wire, 64 examples at once
 │   │   ├── train.h             # boundary functions of the train components, for main.c and the tests
 │   │   ├── main.c              # one Run: experiment file + seed (+ thread count) → Evolver
-│   │   ├── config.c            # reads the flat experiment-file format; refuses one whose hash differs from the binary's
+│   │   ├── config.c            # reads the flat experiment-file format (incl. execution.*); refuses one whose build hash differs from the binary's
 │   │   ├── dataset.c           # maps the train Dataset file read-only; example lookup from (seed, generation, position)
 │   │   ├── rng.c               # stateless random streams derived from (seed, level indices)
 │   │   ├── evolver.c           # Evolver (Run, Generation): generations → individuals; the one place work is split; checkpoints; hands the best genome to the Exporter
@@ -61,9 +61,9 @@ nand-evolver/
 │   ├── test_canonical.c        # a genome and its canonical form behave identically
 │   ├── test_lookup.c           # example lookup is pure: same (seed, generation, position) → same example
 │   ├── test_resume.c           # stop at a generation boundary and resume → bit-identical to an uninterrupted run
-│   └── test_determinism.py     # same experiment and seed, 1 vs N threads → identical model file, checkpoints and per-generation records
-├── build/<name>/               # generated, git-ignored: config.h, the experiment's hash, binaries
-├── runs/<name>/<seed>/         # generated, git-ignored: the experiment's hash, run log, checkpoints, model file, report
+│   └── test_determinism.py     # same experiment hash and seed, varying every execution key → identical model file, checkpoints and per-generation records
+├── build/<name>/               # generated, git-ignored: config.h, the build hash, binaries
+├── runs/<name>/<seed>/         # generated, git-ignored: the experiment hash, run log, checkpoints, model file, report
 ├── data/                       # raw Sources (MNIST), git-ignored
 ├── docs/                       # ARCHITECTURE, DECISIONS and FILESYSTEM, moved here when SYN ends
 ├── .gitignore
@@ -75,14 +75,13 @@ nand-evolver/
 
 - **Names, not hashes, on disk.**
   - Every experiment file has a human-readable `name`. `build/`, `runs/` and `data/` are git-ignored but meant to be read: they are keyed by name, so an agent can read outputs without the Driver.
-  - The hash is stored inside `build/<name>/` and checked by the binary; it's never used as a path.
-  - Every run directory records its hash too. The Driver refuses to combine runs whose hashes differ under one name, so editing an experiment without renaming it can't silently mix results.
+  - Two hashes, never used as paths. The **experiment hash** (protocol, training, inference, parameter and task keys; not replicate or execution) identifies results: every run directory records it, and the Driver refuses to combine runs whose experiment hashes differ under one name. The **build hash** adds the compile-time execution keys: it is stored in `build/<name>/` and checked by the binary.
   - Names come directly from the actual file name of the experiment file. For example, the `name` of `mux.cfg` is 'mux'.
 - **Configuration flows down.**
-  - **Experiment files** are flat `key = value` with dotted keys (`protocol.kernel = reference`, `algorithm.selector = tournament`, `parameter.population = 256`), readable by Python and C alike.
-  - **`build.py`** writes `build/<name>/config.h` as `#define`s from the protocol and algorithm keys, and embeds the experiment file in `train`. infer gets a protocol-only header (e.g. the Kernel scheme), so the deployed program never sees algorithm keys. `core/` headers read those protocol `#define`s.
-  - **`config.c`** refuses an experiment file whose hash differs from the binary's.
-- **Execution is not configuration.** Thread count, machine and compiler flags are command-line or build facts, outside the hash, recorded in the run log. Only `evolver.c` reads the thread count.
+  - **Experiment files** are flat `key = value` with dotted keys (`protocol.kernel = reference`, `training.selector = tournament`, `inference.arena = static`, `parameter.population = 256`, `task.rounds = 28`, `replicate.seeds = 5`, `execution.threads = 8`), readable by Python and C alike.
+  - **`build.py`** writes `#define`s per binary: protocol keys go to both, training keys to `train` only, inference keys to `infer` only, and compile-time execution keys (e.g. backend, lane width) to whichever binary they shape. It embeds the experiment file in `train`. `core/` headers read the protocol `#define`s.
+  - **`config.c`** refuses an experiment file whose build hash differs from the binary's. Start-up execution keys (e.g. thread count) are read like parameters.
+- **Execution is configuration, outside the experiment hash.** `execution.*` keys are explicit so studies can compare runtimes. Varying them must never change results, which `test_determinism` checks. The **machine** (processor, OS, compiler version) is not configured; every report records it.
 - **The model is one file.** `build.py` compiles the model file into `infer`, so a deployed binary carries its model. The model file holds the canonical genome, its input and output sizes, and room for an initial memory state (a child starting from its parent's memory).
 - **infer's interface.** One input record in, one output record out, lock-step. The model always outputs: at the tick limit it emits whatever its output region holds, exactly as training scores it. By default one process runs one example, so restarting clears the Arena, and the evaluator starts one process per example. A reset record is the streaming option, noted but not built in P1.
 - **Ready is two protocol keys.** `protocol.ready_start` (the value the Harness writes into the ready wire at the start of every round) and `protocol.ready_value` (the value that means ready), each 0 or 1, independent, compiled into both programs. The Kernel checks ready after each tick only, so every round runs at least one tick. The reference is start 0, ready on 1: a genome isn't ready until a Nand drives the wire high, which a Nand reading cleared wires does at once, so early training is faster. The other three combinations are lines on the same figure.
