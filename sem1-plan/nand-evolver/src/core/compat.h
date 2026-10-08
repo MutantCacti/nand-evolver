@@ -34,9 +34,18 @@
  * example happened to run last — making the result depend on how the work was
  * split, which is the one thing that must never happen.
  *
- * So this is not an implementation shortcut that a later Evolver could lift.
- * Inheriting requires ordered examples per genome, and an Evolver that ordered
- * them would be individual mode by another name. */
+ * That argument is weaker than it looks, and DELTA is right about why: the end
+ * state can instead be defined as the memory after a *designated* example —
+ * the highest-position one, say. The lookup is pure, so that names the same
+ * example however the work is split, and the state is then deterministic
+ * without anything being ordered. It costs the Evolver some bookkeeping,
+ * keeping that one Arena per genome rather than letting the worker reuse it.
+ *
+ * So this is a **P1 scope choice, not a law**: inheriting in population mode
+ * is buildable, it just needs a definition of "ended" that P1 has not chosen
+ * and an owner for the Arena it would keep. The #error exists so that no build
+ * can quietly ask for something nothing implements. Lifting it is mutant's
+ * call, and takes this block with it. */
 #if defined(TRAINING_INHERIT_ARENA) && TRAINING_INHERIT_ARENA \
     && !defined(TRAINING_EVOLVER_INDIVIDUAL)
 #error "training.inherit_arena requires training.evolver = individual"
