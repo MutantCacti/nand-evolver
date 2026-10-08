@@ -86,6 +86,7 @@ Top to bottom, for training.
 - For the same reason, examples are never shuffled into a stored order. The example to use is computed from (seed, generation, position within the generation).
 - **Checkpoints** are the Evolver's own: the population, in training form, at a generation boundary, read back only by the Evolver to resume a run. They are never exported.
 - The **Logger** keeps the **run log**, the record the Driver reads for reports and plots. Every component writes its own events to it. It is called, never a loop owner, and logging never changes results: a run's model file, checkpoints and per-generation records are identical however its work is divided between threads.
+- **The log is ordered by wall time, and never out of generation order.** Only generations have a real order; an example's index within one is arbitrary, and may be produced in any order or in parallel, so ordering by it would claim a meaning it does not have. Per-thread buffers are merged at generation boundaries, which is where the whole population is at rest, so a generation's lines can never appear among the next generation's. The log itself is therefore not one of the things compared for identity between runs: within a generation, line order follows whichever thread got there first.
 
 **Generation**. One step of evolution. The **population** (the current collection of genomes) is measured; then:
 - the **Selector** compares the results and chooses which genomes become parents;
@@ -208,6 +209,8 @@ Two hashes follow from this, and neither is ever used as a path:
 
 Both exclusions are whole prefixes rather than named keys. `execution.` is excluded because runs that differ only in execution must give identical results, which is tested. `experiment.` is excluded because it describes the Driver's conduct, not the search: adding a seed to a study must not invalidate the runs already made under it.
 
+Some combinations of keys cannot be built together. They are refused in **one place**, as a compile error naming the pair, rather than by each file checking the combinations that happen to reach it: a file that guards its own is a file that can disagree with another.
+
 The **machine** (processor, operating system, compiler version) is never configured, only recorded in every report, so runtime comparisons are valid only between runs on the same machine.
 
 ## Rules the structure follows
@@ -238,5 +241,3 @@ Nothing above this section depends on which is in use. The model file stores its
 ## Open questions
 
 - Whether evolution is best expressed as one component or as Selector + Mutator. It's possible that smarter mutation would involve knowing scores or relative performance.
-- **What order the run log is written in.** Lines are produced by whichever thread finishes first, which is not an order the log should keep: a log ordered by arrival differs between a one-thread and an eight-thread run, and nothing else about a run does. The alternative is to order by position in the trees — (generation, genome, example) — and to keep wall time as a field that never orders anything.
-- **How forbidden combinations of configuration keys are refused.** Variants are `#if` blocks, and some pairs are incompatible. Whether each file refuses its own bad pairs, or one header refuses all of them before any file is compiled, is undecided.

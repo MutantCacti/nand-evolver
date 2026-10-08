@@ -30,6 +30,7 @@ nand-evolver/
 ├── studies/                    # one file per Study: its name and the names of its experiments
 ├── src/
 │   ├── core/                   # shared by train and infer
+│   │   ├── compat.h            # every forbidden combination of keys, each an #error naming the pair; included by every translation unit
 │   │   ├── word.h              # the word type: one per wire, every bit the same value; WORD_BITS; the lane_width rule
 │   │   ├── genome.h            # Genome and Nand (training and canonical forms); wire layout (constant, input, ready, output, internal)
 │   │   ├── genome.c            # create, copy, validate; the only code that knows the wire layout
@@ -53,7 +54,7 @@ nand-evolver/
 │   │   ├── trainer.c           # Trainer: changes a genome between examples (individual-mode variant only)
 │   │   ├── verifier.c          # Verifier: produced vs expected wires on graded rounds → error per example
 │   │   ├── exporter.c          # Exporter: canonicalises the best genome (README; config-driven) and writes the model file via core/model.c; called once by the Evolver at the end of a run
-│   │   └── logger.c            # Logger: the run log; every component writes its own events; per-thread buffers merged at generation boundaries
+│   │   └── logger.c            # Logger: the run log; every component writes its own events; per-thread buffers merged at generation boundaries, wall-time order within a generation
 │   └── infer/                  # the product
 │       ├── main.c              # Deployment: compiled-in model; loops over records (0x00 reset, 0x01 input), one output record per input record
 │       └── records.h           # the record format: the one-byte kind, and the length of an input record
@@ -128,9 +129,7 @@ nand-evolver/
 - **G. Forced closure:** the model always outputs, with no timeout flag.
 - **H. `build/`, `runs/`, `data/`:** git-ignored, but readable by developers and agents.
 
-## Still open
+## Rulings from the 2B review (mutant)
 
-These are mutant's to settle, and nothing above assumes an answer:
-
-- **What order the run log is written in.** `logger.c` says "merged at generation boundaries" without saying merged into what order.
-- **How forbidden combinations of configuration keys are refused.** No file in the tree above does it.
+- **Log order is wall time, never out of generation order.** Only generations have a real order; an index within one is arbitrary and may be produced in parallel. `logger.c` merges per-thread buffers at generation boundaries, which is the rest point that makes the guarantee hold. The log is not among the things `test_determinism` compares.
+- **Forbidden key combinations live in `core/compat.h`,** one `#error` per incompatible pair, included by every translation unit. No file guards its own combinations.
