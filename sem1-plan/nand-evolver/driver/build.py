@@ -1,9 +1,12 @@
 """driver/build.py
 
-Experiment file → binary. Every key becomes a #define in build/<name>/config.h
-(the program's read-only configuration is compiled in), the word type is set
-from execution.word_bits, and make builds the program. For infer, the model
-file is compiled in as build/<name>/model.h.
+Experiment file → binary. Compile-time keys (protocol, training, inference,
+and execution word_bits, lane_width and backend) become #defines in
+build/<name>/config.h, which also sets the word type. The whole experiment
+file is embedded in train, which reads its parameters and thread count from
+that copy at start-up, so one build serves a sweep over parameters. Task keys
+never reach C: train learns the task's shape from the Dataset file. For
+infer, the model file is compiled in as build/<name>/model.h.
 
 Created: 2026-10-08
  Author: Maxence Morel Dierckx
