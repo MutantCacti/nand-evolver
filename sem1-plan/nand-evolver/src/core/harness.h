@@ -1,16 +1,16 @@
 /*
  * core/harness.h
- * Harness (Individual/Deployment, Example): examples to rounds, driving the
- * protocol the README defines.
+ * Harness: examples to rounds, driving the protocol the README defines.
  *
  * Per round it writes the input region and ready's start value, has the Kernel
- * run the genome, and reads the output region. It is the same component in both
- * programs: in train it is fed from the Dataset and reaches the Verifier and
- * Trainer only through hooks, so tests can stub them; deployed it is fed input
- * records by whoever embeds the model and calls neither.
+ * run the genome, and reads the output region back. That is the whole of its
+ * job, and it is the same job in both programs.
  *
- * lane_* (train/harness.c) packs WORD_BITS examples into the lanes of each
- * word. packed_* (infer/harness.c) runs one example, one bit per wire.
+ * Where a round's input comes from, and where its output goes, is the Feed's
+ * business and never the Harness's. So the Harness knows nothing of datasets,
+ * grading, error, stdin or stdout: train supplies a Feed over the Dataset whose
+ * write runs the Verifier, deployment supplies one over stdin and stdout, and a
+ * test supplies one held in memory. One public function per layout.
  *
  * Created: 2026-10-08
  *  Author: Maxence Morel Dierckx
@@ -26,91 +26,43 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* One exchange of an example: the input bits to write, and, when graded, the
- * output bits expected back. Bits are raw: no encoding is invented anywhere. */
-typedef struct
+/* What a read yielded. An **example** is the unit the arena is cleared for, so
+ * in the lane layout it is a group of up to WORD_BITS examples advancing in
+ * lockstep, not a single one. */
+typedef enum
 {
-    const word * inputs;        /* num_inputs bits, one example's worth */
-    const word * expected;      /* num_outputs bits; NULL when not graded */
-    int graded;
+    FEED_ROUND = 0,     /* inputs filled: run this round of the current example */
+    FEED_EXAMPLE,       /* inputs filled, and they open a new example: clear first */
+    FEED_END            /* nothing left to run */
 }
-Round;
+FeedStatus;
 
-/* One problem: a sequence of rounds. XOR is one; an MNIST image fed a row at a
- * time is 28, of which only the last is graded. */
+/* The Harness's only window onto the world. */
 typedef struct
 {
-    const Round * rounds;
-    size_t num_rounds;
-}
-Example;
+    /* Fill the next round's input values. */
+    FeedStatus (*read)(void * context, word * inputs, size_t num_inputs);
 
-/* What one example's measurement yields. Travels up unchanged: nothing below
- * the Selector combines these. */
-typedef struct
-{
-    uint32_t error;     /* wrong output bits over the example's graded rounds */
-    uint32_t ticks;     /* ticks used over all of its rounds */
-}
-Record;
+    /* Take this round's output values, once the Kernel has stopped, with the
+     * ticks it took. Whether that is scored, printed or stored is the feed's
+     * business: train's write runs the Verifier on graded rounds, deployment's
+     * writes a record to stdout, a test's keeps it for comparison. */
+    int (*write)(void * context, const word * outputs, size_t num_outputs,
+                 uint32_t ticks);
 
-/* The lane Harness's only route to train-only components. */
-typedef struct
-{
-    /* Verifier, on a graded round: produced vs expected output wires. Writes
-     * the per-wire wrong mask as evidence, and returns the error it adds. */
-    uint32_t (*verify)(void * context,
-                       const word * produced, const word * expected,
-                       size_t num_outputs, word active_lanes, word * wrong_out);
-
-    /* Trainer, between examples: change the genome from results so far. */
-    int (*train)(void * context, Genome * genome,
-                 const Record * records, size_t count);
-
-    void * context;     /* NULL hooks mean the component is not configured in */
-}
-HarnessHooks;
-
-/* Individual: measure one genome over the examples it was handed, filling one
- * Record per example. The caller decides how examples were divided. */
-int lane_harness_individual(const Genome * genome, Arena * arena,
-                            const Example * examples, size_t num_examples,
-                            const HarnessHooks * hooks, uint32_t tick_limit,
-                            Record * records_out);
-
-/* Example: one lane group of up to WORD_BITS examples, packed into lanes.
- *
- * Public for one reason: the differential test needs a per-example, in-memory
- * entry on both sides, so that it can read each example's output region out of
- * the Arena and compare it with the packed run. Reaching this level only
- * through lane_harness_individual would leave the test seeing just the last
- * example's arena, since the arena is cleared between examples. */
-int lane_harness_example(const Genome * genome, Arena * arena,
-                         const Example * group, size_t group_size,
-                         const HarnessHooks * hooks, uint32_t tick_limit,
-                         Record * records_out);
-
-/* Where a deployed model's examples come from and where its answers go. Keeps
- * core free of any opinion about stdin and stdout. */
-typedef struct
-{
-    /* Fill one example's input bits. 0 on success, -1 at end of stream. */
-    int (*next)(void * context, word * inputs, size_t num_inputs);
-    int (*emit)(void * context, const word * outputs, size_t num_outputs);
     void * context;
 }
-DeploymentIO;
+Feed;
 
-/* Deployment: one model running for as long as it is switched on. One input
- * record in, one output record out, lock-step. The model always answers. */
-int packed_harness_deployment(const Model * model, Arena * arena,
-                              const DeploymentIO * io, uint32_t tick_limit);
+/* Run until the feed ends.
+ *
+ * The genome is mutable because individual mode rewrites it at an example
+ * boundary; nothing else here changes it. The Model is not, because the
+ * deployed program never changes what it was given. */
+int lane_harness_run(Genome * genome, Arena * arena,
+                     const Feed * feed, uint32_t tick_limit);
 
-/* Example: one example's rounds, one bit per wire. Public for the same reason
- * as its lane counterpart: deployment reads a stream, so the test needs this
- * in-memory entry instead. */
-int packed_harness_example(const Model * model, Arena * arena,
-                           const Example * example, uint32_t tick_limit,
-                           word * outputs_out);
+int packed_harness_run(const Model * model, Arena * arena,
+                       const Feed * feed, uint32_t tick_limit);
 
 #endif

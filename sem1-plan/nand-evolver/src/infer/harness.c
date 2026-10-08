@@ -1,6 +1,11 @@
 /*
  * infer/harness.c
- * The packed Harness: one example, one bit per wire. Drives the same protocol as the lane Harness and calls neither a Verifier nor a Trainer, because the product has neither.
+ * The packed Harness: one example, one bit per wire.
+ *
+ * One public function, because reading input and emitting output are the feed's
+ * job: deployment hands it a feed over stdin and stdout, and test_layouts hands
+ * it one held in memory. The Deployment, Example and Round levels are each one
+ * private function, exactly as in the lane Harness.
  *
  * Created: 2026-10-08
  *  Author: Maxence Morel Dierckx
@@ -10,17 +15,31 @@
 
 #include <stdlib.h>
 
-int packed_harness_deployment(const Model * model, Arena * arena,
-                              const DeploymentIO * io, uint32_t tick_limit)
+static FeedStatus packed_harness_example(const Model * model, Arena * arena,
+                                         const Feed * feed, uint32_t tick_limit);
+
+static int packed_harness_round(const Model * model, Arena * arena,
+                                const Feed * feed, uint32_t tick_limit,
+                                const word * inputs);
+
+int packed_harness_run(const Model * model, Arena * arena,
+                       const Feed * feed, uint32_t tick_limit)
 {
-    (void)model; (void)arena; (void)io; (void)tick_limit;
+    (void)model; (void)arena; (void)feed; (void)tick_limit;
     abort();    /* stub */
 }
 
-int packed_harness_example(const Model * model, Arena * arena,
-                           const Example * example, uint32_t tick_limit,
-                           word * outputs_out)
+static FeedStatus packed_harness_example(const Model * model, Arena * arena,
+                                         const Feed * feed, uint32_t tick_limit)
 {
-    (void)model; (void)arena; (void)example; (void)tick_limit; (void)outputs_out;
+    (void)model; (void)arena; (void)feed; (void)tick_limit;
+    abort();    /* stub */
+}
+
+static int packed_harness_round(const Model * model, Arena * arena,
+                                const Feed * feed, uint32_t tick_limit,
+                                const word * inputs)
+{
+    (void)model; (void)arena; (void)feed; (void)tick_limit; (void)inputs;
     abort();    /* stub */
 }

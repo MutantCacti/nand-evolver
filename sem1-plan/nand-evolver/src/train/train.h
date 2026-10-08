@@ -24,6 +24,41 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* ---- shared types ------------------------------------------------------ */
+
+/* One exchange of an example, as the Dataset holds it: the input bits to write,
+ * and, when graded, the output bits expected back. Bits are raw; no encoding is
+ * invented anywhere. */
+typedef struct
+{
+    const word * inputs;        /* num_inputs bits */
+    const word * expected;      /* num_outputs bits; NULL when not graded */
+    int graded;
+}
+Round;
+
+/* One problem: a sequence of rounds. XOR is one; an MNIST image fed a row at a
+ * time is 28, of which only the last is graded. */
+typedef struct
+{
+    const Round * rounds;
+    size_t num_rounds;
+}
+Example;
+
+/* What measuring one example yielded. These travel up to the Selector
+ * uncombined: how they add up to a comparison is a selection decision.
+ *
+ * This lives in train, not in harness.h, because the Harness never learns that
+ * grading or error exist. Granularity is train's feed's choice: per example
+ * today, per round if a Selector ever wants it, with no Harness change. */
+typedef struct
+{
+    uint32_t error;     /* wrong output bits over the example's graded rounds */
+    uint32_t ticks;     /* ticks used over all of its rounds */
+}
+Record;
+
 /* ---- config.c ---------------------------------------------------------- */
 
 /* The runtime half of an experiment file. Structural choices are #defines, so
@@ -75,6 +110,23 @@ void dataset_close(Dataset * dataset);
 int dataset_example(const Dataset * dataset,
                     uint64_t seed, size_t generation, size_t position,
                     Example * example);
+
+/* ---- feed.c ------------------------------------------------------------ */
+
+/* Build the Feed the Harness runs on: the Dataset on the way in, the Verifier
+ * on the way out. Packs a group of up to WORD_BITS examples into lanes, reports
+ * an example boundary when the group advances, and fills one Record per
+ * example. feed_close releases what feed_open allocated behind feed->context. */
+int feed_open(Feed * feed, const Config * config, const Dataset * dataset,
+              uint64_t seed, size_t generation,
+              size_t first_example, size_t num_examples,
+              Record * records);
+
+void feed_close(Feed * feed);
+
+/* The records accumulated so far. Individual mode's Trainer reads its evidence
+ * through this, which is why the Harness need not carry records at all. */
+const Record * feed_records(const Feed * feed, size_t * count);
 
 /* ---- rng.c ------------------------------------------------------------- */
 
@@ -129,17 +181,18 @@ Genome * mutator_mutate(const Config * config, const Genome * parent,
 /* ---- trainer.c --------------------------------------------------------- */
 
 /* Changes a genome between examples, from the results so far. Individual mode
- * only; installed as HarnessHooks.train, so this matches that signature. */
-int trainer_train(void * context, Genome * genome,
-                  const Record * records, size_t count);
+ * only, and called directly by the lane Harness inside an #if, not through a
+ * callback: a feed carries I/O, and rewriting the genome being measured is not
+ * I/O. It takes its evidence from the feed via feed_records. */
+int trainer_train(Genome * genome, const Feed * feed);
 
 /* ---- verifier.c -------------------------------------------------------- */
 
 /* Produced against expected output wires on a graded round. Bitwise, so
  * wrong_out shows which wires are wrong as evidence for the Mutator and
- * Trainer. Installed as HarnessHooks.verify, so this matches that signature. */
-uint32_t verifier_verify(void * context,
-                         const word * produced, const word * expected,
+ * Trainer. Called by train's feed, which is the only thing that knows a round
+ * is graded. */
+uint32_t verifier_verify(const word * produced, const word * expected,
                          size_t num_outputs, word active_lanes,
                          word * wrong_out);
 

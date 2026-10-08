@@ -18,10 +18,9 @@ typedef int trainer_not_built; /* C requires a translation unit to declare somet
 
 #elif defined(TRAINING_TRAINER_DELTA_ERROR)
 
-int trainer_train(void * context, Genome * genome,
-                  const Record * records, size_t count)
+int trainer_train(Genome * genome, const Feed * feed)
 {
-    (void)context; (void)genome; (void)records; (void)count;
+    (void)genome; (void)feed;
     abort();    /* stub */
 }
 

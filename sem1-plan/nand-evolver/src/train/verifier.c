@@ -9,12 +9,11 @@
 
 #include <stdlib.h>
 
-uint32_t verifier_verify(void * context,
-                         const word * produced, const word * expected,
+uint32_t verifier_verify(const word * produced, const word * expected,
                          size_t num_outputs, word active_lanes,
                          word * wrong_out)
 {
-    (void)context; (void)produced; (void)expected;
+    (void)produced; (void)expected;
     (void)num_outputs; (void)active_lanes; (void)wrong_out;
     abort();    /* stub */
 }
