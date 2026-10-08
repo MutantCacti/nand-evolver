@@ -18,7 +18,7 @@ Identify the series of nested loops that encapsulate stages of program execution
 `(` = Executor that varies state
 `#` = State varied
 
-Each line of a tree is a **level**, and each level is one loop. A level's `( )` lists every component that acts there: the level's **owner**, whose loop repeats the level beneath, and the components it calls. An owner therefore appears at every level whose loop it runs.
+Each line of a tree is a **level**, and **each level is one loop**. A level's `( )` lists every component that acts there: the level's **owner**, whose loop repeats the level beneath, and the components it calls. An owner therefore appears at every level whose loop it runs. A thing that is not looped over is not a level, however real it is.
 
 A level's `#` lists everything that *any* configuration of the program might create or change there, not only what the simplest configuration does. For example, `# Arena` appears at Generation because one configuration lets a new genome start from a copy of its parent's memory space, even though the simplest configuration starts it empty.
 
@@ -29,24 +29,24 @@ Study (Driver)                                              # Source
 └─* Experiment (Driver)                                     # Config, Dataset
     └─* Run (Evolver, Exporter, Logger)                     # Rng, Model, Log
         └─* Generation (Evolver, Selector, Mutator)         # Genome, Arena
-            └─* Individual (Harness, Trainer)               # Genome, Arena
-                └─* Example (Harness)                       # Arena
-                    └─* Round (Kernel, Verifier)            # Arena
-                        └─* Tick (Kernel)                   # Arena
-                            └─* Instruction                 # Arena
+            └─* Example (Evolver, Harness, Trainer)         # Arena
+                └─* Round (Kernel, Harness, Verifier)       # Arena
+                    └─* Tick (Kernel)                       # Arena
+                        └─* Instruction                     # Arena
 ```
 
 ### Deployment
 
 ```
-Deployment (Harness)                        # Arena, Model
-└─* Example (Harness)                       # Arena
-    └─* Round (Kernel)                      # Arena
-        └─* Tick (Kernel)                   # Arena
-            └─* Instruction                 # Arena
+Deployment (main)                           # Arena, Model
+└─* Round (Kernel, Harness)                 # Arena
+    └─* Tick (Kernel)                       # Arena
+        └─* Instruction                     # Arena
 ```
 
-The deployed program has no Study, Experiment, Run or Individual level, because an embedder shipping a model does not loop over experiments, seeds or candidate genomes. Those levels are the workbench's, not the product's.
+The deployed program has no Study, Experiment, Run or Generation level, because an embedder shipping a model does not loop over experiments, seeds or candidate genomes. Those levels are the workbench's, not the product's.
+
+**It has no Example level either, and that is not an omission.** An example is a lifetime (defined at the Example level below), and a lifetime is delimited rather than iterated. In train the Evolver genuinely loops over examples, so Example is a level. Deployed, `main` loops over *records* and an example is the span between two resets, so there is nothing to loop over and no function to own. The concept is unchanged in both programs; only in one of them is it a loop.
 
 ## Who owns the loops
 
@@ -55,11 +55,18 @@ Four components own all the loops. Every other component is *called* by one of t
 | Owner | Sits at | Repeats | Calls |
 |---|---|---|---|
 | **Driver** | Study, Experiment | Experiments, Runs | builds the Dataset once per experiment |
-| **Evolver** | Run, Generation | Generations, Individuals | Selector then Mutator, after a generation's individuals are measured; the Exporter once, at the end of the run |
-| **Harness** | Individual, Example (train); Deployment, Example (deployed) | Examples, Rounds | Kernel every round; Verifier on graded rounds and Trainer between examples (train) |
+| **Evolver** | Run, Generation, Example | Generations, work units, Rounds | Selector then Mutator, after a generation's work units are measured; the Harness each round and at every example boundary; the Verifier on graded rounds; the Trainer between examples in the individual-mode variant; the Exporter once, at the end of the run |
+| **main** (infer) | Deployment | Records, and so Rounds | the Harness on each input record, and to reset on each reset record |
 | **Kernel** | Round, Tick | Ticks, Instructions | none; it evaluates Nands directly |
 
-The **Harness is the same component in both programs.** It repeats examples and their rounds, driving the protocol the README defines: write the input region, run until the genome signals ready, read the output region. In train it is fed from the Dataset and calls the Verifier and Trainer; deployed, it is fed input records by whoever embeds the model and calls neither.
+**The Harness owns no loop.** It is called with arguments and returns a value, and it is the only code that knows the wire layout:
+
+- **at a round:** write the input values and ready's start value into the Arena, call the Kernel, read the output region back;
+- **at the start of an example:** reset the Arena to its start-of-example state, which is passed in (nothing, or an inherited memory state).
+
+**The Harness is the same component in both programs**, which is what makes a trained genome mean the same thing when deployed: every part of the path a genome experiences is shared code. It differs only in what it is handed, a Genome in train and a Model in infer.
+
+At Round the owner is not the entry point, and this is the one place in the trees where that happens. The caller — the Evolver in train, `main` in infer — calls the **Harness**, which writes the inputs and ready's start value, calls the **Kernel**, whose loop over ticks is the Round level, and then reads the outputs.
 
 ## The levels
 
@@ -69,7 +76,7 @@ Top to bottom, for training.
 - `# Source`: the **Source** is the task's raw data, e.g. images and their **labels** (the correct answers).
 
 **Experiment**. One fully specified search, described by one **experiment file**. That file is the **Config**: it fixes the task, every algorithm choice and every numeric setting. It is a workbench artifact; the deployed program never sees one.
-- Choices that change the program's structure are compiled in, so each combination of them is its own binary. Numeric settings are read at start-up.
+- Choices that change the program's structure are compiled in, so each combination of them is its own binary. Numeric settings are read at start-up into one read-only global, never passed from function to function: configuration that cannot be changed and is the same everywhere is not an argument.
 - The Driver converts the Source into the **Dataset**: a list of examples (defined below) expressed as wire values. Raw input data is flattened into bits and chunked into rounds; it is never encoded into an invented representation, so a genome must learn whatever encoding of its raw input suits it.
 - The one output-side convention is the **target**: how a label becomes the expected values of the output wires, e.g. one wire per possible digit with the right digit's wire set, or a label's raw bits. The task names its target, and the Driver uses the same convention in reverse to read answers back.
 - The Dataset is never changed after this, so every level below can read it freely without copying it.
@@ -80,22 +87,22 @@ Top to bottom, for training.
 - **Checkpoints** are the Evolver's own: the population, in training form, at a generation boundary, read back only by the Evolver to resume a run. They are never exported.
 - The **Logger** keeps the **run log**, the record the Driver reads for reports and plots. Every component writes its own events to it. It is called, never a loop owner, and logging never changes results: a run's model file, checkpoints and per-generation records are identical however its work is divided between threads.
 
-**Generation**. One step of evolution. The **population** (the current collection of individuals, defined next) is measured; then:
-- the **Selector** compares the results and chooses which individuals become parents;
+**Generation**. One step of evolution. The **population** (the current collection of genomes) is measured; then:
+- the **Selector** compares the results and chooses which genomes become parents;
 - the **Mutator** makes the next population by copying parents' genomes with random changes, e.g. adding a Nand or rewiring an index.
 
-**Individual**. One genome and its own memory space, which the code calls the **Arena**. The Evolver hands each individual to the Harness, together with the range of examples to measure it on.
-- Individuals never read each other's state, so they can be measured in parallel.
-- How the examples are divided is decided in one place, outside the Harness: in the simplest configuration, every (individual, example) pair is a separate piece of work.
-- The **Trainer** is optional. When enabled, it changes the individual's genome *during* measurement, between examples, using evidence from the results so far. Its examples must then run in order, so the Harness is handed all of them at once.
+Measuring a generation is the one place work is divided. The Evolver flattens the generation into (genome, example) pairs and splits them; the piece of work it hands out is **one genome and a range of examples**, which is a **work unit**. A range of one is the reference. Nothing in a work unit reads another's state, so they can be measured in any order and in parallel.
+
+- A genome and the memory space it is measured with are *not* one thing. The genome is population state, owned here; the memory space is a worker's scratch, reused from one work unit to the next and cleared at every example boundary. There is no level between Generation and Example.
+- The **Trainer** is optional, and the configuration that has one is a variant of the Evolver. It changes a genome *during* measurement, between examples, using evidence from the results so far. That makes a genome's examples a sequence rather than a set, so the variant hands out whole sequences instead of splitting them freely — a constraint on how the work is divided, not a level of its own.
 
 **Example**. One problem from the Dataset: a sequence of one or more rounds, with the expected output for each round that is graded.
 - XOR is one round per example. An MNIST image fed one pixel row at a time is 28 rounds, where only the last is graded.
-- The Arena is cleared at the start of each example and kept across its rounds. That's how a genome can remember earlier rounds.
-- The **Harness** loops over the examples it was given and their rounds, writing each round's input values into the input region and having the Kernel run the genome. It records each example's result — how wrong it was (its **error**) and how many ticks it took — and passes those records up unchanged.
+- **An example is a lifetime.** The memory space is reset at its start and kept across its rounds, and nothing is ever carried from one example into the next. That is the whole of the distinction between a round and an example, and it is why examples are order-independent while rounds are not. An inherited memory state does not break it: inheritance only changes what the reset resets *to*.
+- The Evolver loops over the examples of its work unit. For each, it has the **Harness** reset the memory space, then runs the example's rounds, and records how wrong the example was (its **error**) and how many ticks it took. Results travel up uncombined.
 
 **Round**. One exchange: input values are written, the genome runs until it signals that its output is ready, and the output region is read. A round also ends after a configured maximum number of ticks, so a genome that never signals still produces a result: the model always answers.
-- Clearing the memory space sets every wire to 0. Ready then follows two independent protocol choices: the value the ready wire is given at the start of each round (0 or 1), and the value that means "ready" (0 or 1). The Harness writes ready's start value at the start of every round, together with the inputs, so every round of an example opens the same way.
+- Resetting the memory space sets every wire to 0. Ready then follows two independent protocol choices: the value the ready wire is given at the start of each round (0 or 1), and the value that means "ready" (0 or 1). The **Harness** writes ready's start value at the start of every round, together with the inputs, so every round of an example opens the same way.
 - The Kernel checks ready after each tick, never before the first, so every round runs at least one tick and the start value alone can never answer.
 - The reference starts ready at 0 and treats 1 as ready. A genome isn't ready until some Nand drives the wire high, and a Nand reading cleared wires outputs 1, so early genomes answer after their first tick and must learn to hold ready low until their logic has settled. That makes early training faster. The other three combinations are compared against it.
 - The tick maximum is a ceiling on how deep a genome's logic can be, not merely a safety valve. A signal needs one tick per layer it passes through, so a solution needing more layers than the limit allows cannot be found at all — and charging a genome for the ticks it used also charges it for depth.
@@ -108,13 +115,13 @@ Top to bottom, for training.
 
 ## The deployed program
 
-Its only input is the model file written by the Exporter at the end of a training run, compiled into the program. Its interface is the README's input and output regions: for each input record it reads, it writes one output record.
+Its only input is the model file written by the Exporter at the end of a training run, compiled into the program. Its interface is the README's input and output regions, reached through a **record** format that `main` owns.
 
-- The **Deployment** level is one model running for as long as it is switched on. Its Arena is created once, at start-up, because there is no Individual level to own it.
-- Whoever embeds the model supplies raw input as bits and reads raw output bits. By default one process runs one example, so starting a new process clears the memory space.
+- Records are framed. Each one begins with a single byte saying what it is: `0x00` is a **reset**, and carries nothing; `0x01` is an **input**, followed by the input region's values. The memory space never sees the header, so every possible pattern of input values stays a valid input — which is why the kind cannot be carried in-band, and why a record's length cannot carry it either. A fixed, known record length is what lets a reader treat a short read as "read more" rather than as a signal.
+- `main` loops over records: on `0x01` it calls the **Harness** for one round and writes one output record; on `0x00` it has the Harness reset the memory space. An example is the span between resets. Starting a process is itself a reset, so running one process per example needs no reset records at all, and a long-lived process that serves many examples sends them.
+- The **Deployment** level is one model running for as long as it is switched on. Its memory space is created once, at start-up, because there is no level above it to own one.
+- Whoever embeds the model supplies raw input as bits and reads raw output bits. Because `main` returns between rounds, an embedder may choose a round's input after seeing the previous round's output.
 - There is no Selector, Mutator, Trainer or Verifier, and no Config.
-
-train and infer share the Harness, the Kernel and the genome format. Every part of the path a genome experiences is therefore the same in both, which is what makes a trained genome mean the same thing when deployed.
 
 Evaluating several finished genomes against held-out examples is the **Driver's** work, not the product's: it builds the deployed program, feeds it held-out examples, reads the answers back through the task's target, and compares them with the labels itself. That comparison is deliberately not the Verifier's. The Verifier produces a per-example error to drive selection; the Driver produces accuracy for a report. They answer different questions and may well disagree, which is why neither is derived from the other.
 
@@ -122,57 +129,58 @@ Evaluating several finished genomes against held-out examples is the **Driver's*
 
 ```
 Experiment
-┌────────────────────────────────────────────────────────────────────────────────────────────┐
-│                   ┌─────────┐     ┌────────┐                    ┌────────┐                 │
-│                   │ Dataset │<────┤ Driver ├───────────────────>│ Config │                 │
-│                   └────┬────┘     └───┬────┘                    └───┬────┘                 │
-│ Run                    │              │                             │                      │
-│ ┌──────────────────────↓──────────────↓─────────────────────────────↓────────────────────┐ │
-│ │                      │           ┌─────┐                          │                    │ │
-│ │                      │           │ Rng │                          │                    │ │
-│ │                      │           └──┬──┘                          │                    │ │
-│ │ Generation           │              │                             │                    │ │
-│ │ ┌────────────────────┼──────────────↓─────────────────────────────┼──────────────────┐ │ │
-│ │ │ Individual         │                                            │                  │ │ │
-│ │ │ ┌──────────────────┼────────────────────────────────────────────┼────────────────┐ │ │ │
-│ │ │ │                  │            ┌─────────┐                     │                │ │ │ │
-│ │ │ │                  └───────────>│ Harness │                     │                │ │ │ │
-│ │ │ │                               └────┬────┘                     │                │ │ │ │
-│ │ │ │ Example                            │                          │                │ │ │ │
-│ │ │ │ ┌──────────────────────────────────┼──────────────────────────┼──────────────┐ │ │ │ │
-│ │ │ │ │ Round                            │                          │              │ │ │ │ │
-│ │ │ │ │ ┌────────────────────────────────┼──────────────────────────┼────────────┐ │ │ │ │ │
-│ │ │ │ │ │ Tick                           │                          │            │ │ │ │ │ │
-│ │ │ │ │ │ ┌──────────────────────────────┼────────┐                 │            │ │ │ │ │ │
-│ │ │ │ │ │ │ ┌────────────────────────────┼──────┐ │                 │            │ │ │ │ │ │
-│ │ │ │ │ │ │ │                            │      │ │                 │            │ │ │ │ │ │
-│ │ │ │ │ │ │ │ ┌────────┐  ┌────────┐  ┌──↓────┐ │ │   ┌──────────┐  │            │ │ │ │ │ │
-│ │ │ │ │ │ │ │ │ Genome ├─>│ Kernel ├─>│ Arena ├─┼─┼──>│ Verifier │  │            │ │ │ │ │ │
-│ │ │ │ │ │ │ │ └────────┘  └────────┘  └───────┘ │ │   └────┬─────┘  │            │ │ │ │ │ │
-│ │ │ │ │ │ │ └─────↑─────────────────────────────┘ │        │        │            │ │ │ │ │ │
-│ │ │ │ │ │ └───────┼───────────────────────────────┘        │        │            │ │ │ │ │ │
-│ │ │ │ │ └─────────┼────────────────────────────────────────┼────────┼────────────┘ │ │ │ │ │
-│ │ │ │ └───────────┼────────────────────────────────────────┼────────┼──────────────┘ │ │ │ │
-│ │ │ │             │      ┌─────────┐                       │        │                │ │ │ │
-│ │ │ │             ├──────┤ Trainer │<──────────────────────┤        │                │ │ │ │
-│ │ │ │             │      └─────────┘                       │        │                │ │ │ │
-│ │ │ └─────────────┼────────────────────────────────────────┼────────┼────────────────┘ │ │ │
-│ │ │               │      ┌─────────┐        ┌──────────┐   │        │                  │ │ │
-│ │ │               └──────┤ Mutator │<───────┤ Selector │<──┘        │                  │ │ │
-│ │ │                      └─────────┘        └────┬─────┘            │                  │ │ │
-│ │ └──────────────────────────────────────────────┼──────────────────┼──────────────────┘ │ │
-│ │                                           ┌────↓────┐             │                    │ │
-│ │                                           │ Evolver │<────────────┘                    │ │
-│ │                                           └────┬────┘                                  │ │
-│ │                                           ┌────↓─────┐    ┌────────┐                   │ │
-│ │                                           │ Exporter │    │ Logger │<─ any component   │ │
-│ │                                           └────┬─────┘    └───┬────┘                   │ │
-│ └────────────────────────────────────────────────┼──────────────┼────────────────────────┘ │
-│                                              ┌───↓───┐       ┌──↓──┐                       │
-│                                              │ Model │       │ Log │                       │
-│                                              └───────┘       └─────┘                       │
-└────────────────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│                  ┌─────────┐      ┌────────┐                      ┌────────┐             │
+│                  │ Dataset │<─────┤ Driver ├─────────────────────>│ Config │             │
+│                  └────┬────┘      └───┬────┘                      └────────┘             │
+│ Run                   │               │                                                  │
+│ ┌─────────────────────↓───────────────↓────────────────────────────────────────────────┐ │
+│ │                     │            ┌─────┐                                             │ │
+│ │                     │            │ Rng │                                             │ │
+│ │                     │            └──┬──┘                                             │ │
+│ │ Generation          │               │                                                │ │
+│ │ ┌───────────────────┼───────────────↓──────────────────────────────────────────────┐ │ │
+│ │ │ Example           │                                                              │ │ │
+│ │ │ ┌─────────────────┼────────────────────────────────────────────────────────────┐ │ │ │
+│ │ │ │ Round           │                                                            │ │ │ │
+│ │ │ │ ┌───────────────┼──────────────────────────────────────────────────────────┐ │ │ │ │
+│ │ │ │ │               └──────────────>┌─────────┐                                │ │ │ │ │
+│ │ │ │ │                               │ Harness │<──────────────┐                │ │ │ │ │
+│ │ │ │ │                               └────┬────┘               │                │ │ │ │ │
+│ │ │ │ │ Tick                               │                    │                │ │ │ │ │
+│ │ │ │ │ ┌──────────────────────────────────↓──────────────────┐ │                │ │ │ │ │
+│ │ │ │ │ │  ┌────────┐      ┌────────┐      ┌───────┐          │ │                │ │ │ │ │
+│ │ │ │ │ │  │ Genome ├─────>│ Kernel ├─────>│ Arena ├──────────┼─┘                │ │ │ │ │
+│ │ │ │ │ │  └───↑────┘      └────────┘      └───┬───┘          │                  │ │ │ │ │
+│ │ │ │ │ └──────┼───────────────────────────────┼──────────────┘                  │ │ │ │ │
+│ │ │ │ └────────┼───────────────────────────────┼─────────────────────────────────┘ │ │ │ │
+│ │ │ │          │                          ┌────↓─────┐                             │ │ │ │
+│ │ │ │          │                          │ Verifier │                             │ │ │ │
+│ │ │ │          │                          └────┬─────┘                             │ │ │ │
+│ │ │ └──────────┼───────────────────────────────┼───────────────────────────────────┘ │ │ │
+│ │ │        ┌───┴─────┐                  │                                            │ │ │
+│ │ │        │ Trainer │<─────────────────┤                                            │ │ │
+│ │ │        └─────────┘                  │                                            │ │ │
+│ │ │                                     │                                            │ │ │
+│ │ │        ┌─────────┐         ┌────────↓─┐                                          │ │ │
+│ │ │        │ Mutator │<────────┤ Selector │                                          │ │ │
+│ │ │        └───┬─────┘         └──────────┘                                          │ │ │
+│ │ └────────────┼─────────────────────────────────────────────────────────────────────┘ │ │
+│ │              └─────────────────↓                                                     │ │
+│ │                           ┌─────────┐                                                │ │
+│ │                           │ Evolver │                                                │ │
+│ │                           └────┬────┘                                                │ │
+│ │                           ┌────↓─────┐        ┌────────┐                             │ │
+│ │                           │ Exporter │        │ Logger │<─ any component             │ │
+│ │                           └────┬─────┘        └───┬────┘                             │ │
+│ └────────────────────────────────┼──────────────────┼──────────────────────────────────┘ │
+│                              ┌───↓───┐           ┌──↓──┐                                 │
+│                              │ Model │           │ Log │                                 │
+│                              └───────┘           └─────┘                                 │
+└──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+The Evolver appears at the bottom because it owns Run, Generation and Example: the boxes drawn inside those are the levels its loops repeat. The **Config** has no arrow leaving it because it is a read-only global, read wherever it is needed rather than passed down. The **Trainer**'s arrow points back up into the Genome: it rewrites the genome between examples, which is why its examples must run in order and why it exists only in the individual-mode variant of the Evolver.
 
 ## Configurations
 
@@ -182,11 +190,25 @@ Five kinds of choice are configured, in decreasing scope:
 - **Training** — fixed for train, and absent from infer: whether a Trainer exists, how the Selector compares individuals, etc.
 - **Inference** — fixed for infer, and absent from train: whether to parallelise, how to allocate the arena (runtime optimisations), etc.
 - **Parameter** — fixed within one execution: rates, limits, maximums e.g. population size, tick timeout.
-- **Execution** — choices that change runtime and memory usage but never output, e.g. thread count, word size, CPU or GPU implementation. Execution is configured explicitly so studies can compare it, but it is left out of the **experiment hash**, which identifies results from the protocol, training, inference, parameter and task choices (not the seed, which varies between the runs of one experiment). Runs that differ only in execution must give identical results, and that is tested. The **build hash** adds the execution choices fixed at compile time, and identifies a binary.
+- **Execution** — choices that change runtime and memory usage but never output, e.g. thread count, the width of a word, how many examples share one, CPU or GPU implementation.
 
 Training and inference configurations are collectively referred to as **algorithm** configurations.
 
-Two further things vary between experiments, around the program rather than within it: the **task** being solved, and the **replicate** (the seed). The **machine** (processor, operating system, compiler version) is never configured, only recorded in every report, so runtime comparisons are valid only between runs on the same machine. The task varies between Experiments, the replicate between Runs.
+Two more describe the work rather than the program:
+
+- **Task** — which problem is being solved: its source, bit order, target convention, rounds per example and graded rounds.
+- **Experiment** — what the Driver does with the experiment, and nothing the C programs ever read: which seeds to run, for instance.
+
+Each kind is a prefix on the keys of the experiment file (`protocol.`, `training.`, `inference.`, `parameter.`, `execution.`, `task.`, `experiment.`), so a key's kind is visible wherever it is written.
+
+Two hashes follow from this, and neither is ever used as a path:
+
+- The **experiment hash** covers `protocol.`, `training.`, `inference.`, `parameter.` and `task.`, and identifies a *result*. Every run directory records it, and the Driver refuses to combine runs whose hashes differ.
+- The **build hash** adds the execution keys fixed at compile time, and identifies a *binary*.
+
+Both exclusions are whole prefixes rather than named keys. `execution.` is excluded because runs that differ only in execution must give identical results, which is tested. `experiment.` is excluded because it describes the Driver's conduct, not the search: adding a seed to a study must not invalidate the runs already made under it.
+
+The **machine** (processor, operating system, compiler version) is never configured, only recorded in every report, so runtime comparisons are valid only between runs on the same machine.
 
 ## Rules the structure follows
 
@@ -195,13 +217,26 @@ Two further things vary between experiments, around the program rather than with
 3. **Every component does something besides looping.** If the only name a proposed component can be given describes data it would track (e.g. "Clock" for a tick count), it should not exist: its loop belongs to the component that owns that data. A name must also exclude something — one that would fit three other components is not a name.
 4. **Invented names are held to rule 3; established ones are not.** Where the field already has an unambiguous term for a unit, recognisability wins, because the reader arrives knowing it. "Run" is standard for one seeded search and is kept for that reason.
 5. **Configuration only flows down.** It is read once from the experiment file, at Experiment, and no level below changes it.
-6. **Results only flow up,** one level at a time, uncombined until they reach the Selector. Only the Selector decides how per-example results add up to a comparison between individuals.
-7. **Memory belongs to one level and is used below it.** The Arena is created once per individual, cleared once per example and written once per tick. Deployed, there is one individual, so it is created once at start-up.
+6. **Results only flow up,** one level at a time, uncombined until they reach the Selector. Only the Selector decides how per-example results add up to a comparison between genomes. A result is therefore always per example, never per group: a measurement that covers several examples at once still reports each one separately.
+7. **Memory belongs to one level and is used below it.** The Arena is a worker's scratch, created once per work unit and reused across the examples in it, reset at the start of every example and written once per tick. Deployed, there is one model, so it is created once at start-up.
 
-## How training uses the hardware
+## How the memory space is stored
 
-In training, each wire is stored as one 64-bit word rather than one bit, as the README's memory section describes. Bit k of every word belongs to example k, so one pass over the Nands evaluates 64 examples at once. This packing is a property of how the Harness and Kernel are written for train. It does not change any level in the tree, and infer stores one bit per wire instead.
+Each wire is one `word`, and **every bit of that word holds the same value**: a wire is all zeroes or all ones, never a mixture. A Nand is then `~(a & b)` whatever the width of a word, which is what lets one Kernel serve every layout.
+
+The general rule, which the reference and the optimisation share:
+
+> bit *j* of a wire's word holds the value of example (*j* mod `lane_width`).
+
+- **The reference** sets `lane_width` to 1, so every bit of a word is the same example and the statement above reduces to "all bits equal". `word` is one byte, which is the smallest form that keeps the rule and the smallest memory space, and memory traffic is what a Nand machine is limited by: evaluating a Nand is two reads at arbitrary indices, so the arrangement that keeps a genome's wires in cache beats the one that saves instructions.
+- **The optimisation** sets `lane_width` to the width of a word, so one word holds one example per bit and a single pass over the Nands evaluates that many examples at once. Only what the Harness writes into the words changes; the Kernel is the same code.
+
+Both are `execution.` keys: `execution.word_bits` and `execution.lane_width`, the latter being either 1 or the width of a word. Neither may change a result, so every result is per example from the start — a group's ticks and a group's error are arrays with one entry per example in it, not single numbers. A measurement that charged a whole group the slowest example's ticks would make the number of examples per word change the outcome, and that is exactly what must not happen.
+
+Nothing above this section depends on which is in use. The model file stores its memory state as packed bits and is unpacked on load, so it does not depend on either.
 
 ## Open questions
 
 - Whether evolution is best expressed as one component or as Selector + Mutator. It's possible that smarter mutation would involve knowing scores or relative performance.
+- **What order the run log is written in.** Lines are produced by whichever thread finishes first, which is not an order the log should keep: a log ordered by arrival differs between a one-thread and an eight-thread run, and nothing else about a run does. The alternative is to order by position in the trees — (generation, genome, example) — and to keep wall time as a field that never orders anything.
+- **How forbidden combinations of configuration keys are refused.** Variants are `#if` blocks, and some pairs are incompatible. Whether each file refuses its own bad pairs, or one header refuses all of them before any file is compiled, is undecided.
