@@ -42,6 +42,32 @@ Execution is synchronous to an internal tick rate. Nands can be evaluated in par
 
 > Since addition is append by default, prioritising smaller-index Nands in collisions prevents newly added Nands from overwriting the values of useful older Nands.
 
+### Examples and rounds
+
+A **round** is one exchange: the embedder writes the input space, the model runs until it sets ready or a tick limit is reached, and the embedder reads the output space. The model always answers: at the tick limit, the output space is read as it stands.
+
+An **example** is a sequence of one or more rounds. The memory space persists between the rounds of an example, so a model can carry state from one round to the next, and is reset between examples, so it never carries state from one example to the next. A reset sets every wire to 0, or to a stored initial memory state when the model has one.
+
+### Records
+
+A running model reads **records** from its embedder and answers each input record with one output record. Every record starts with a one-byte header:
+
+| Header | Record | Body                  | Answer                 |
+| ------ | ------ | --------------------- | ---------------------- |
+| `0x00` | reset  | none                  | none                   |
+| `0x01` | input  | the `i` input bits    | the `m` output bits    |
+
+A model process starts reset. The header is never written to the memory space, so every pattern of input bits remains a valid input, and example boundaries are found by reading, never by timing.
+
+### Words
+
+Each wire is stored as one word of `w` bits, where `w` is fixed when the program is built (8 by default). Bit `j` of every wire's word holds the value of example `j mod L`, where `L`, the lane width, is either 1 or `w`.
+
+- With `L = 1`, every bit of a word is equal, so a wire is `0` or all ones, and the word holds one example.
+- With `L = w`, a word holds `w` examples, one per bit, so one pass over the Nands evaluates all of them.
+
+A Nand is `~(a & b)` on whole words, which is correct at any `w` and either `L`. A saved model's initial memory state, when it has one, is stored at one bit per wire.
+
 ### Canonicalisation
 
 During training, exported genomes are canonicalised to an optimised form.
@@ -58,14 +84,13 @@ Let `N` be the number of Nands in a genome, equal to `Genome.num_nands`.
 
 During training, the memory space is scaled with the number of inputs Nands might consume. The maximum size of the address space is therefore `i+1+2N` wires.
 
-Training does not pack the memory space, so a wire is a whole word (currently `uint64_t`) rather than a single bit. The address space costs `64(i+1+2N)` bits, and the output buffer, one word per Nand, adds `64N`.
+The memory space is not packed: a wire is a whole word of `w` bits rather than a single bit (see [Words](#words)). The address space costs `w(i+1+2N)` bits, and the output buffer, one word per Nand, adds `wN`.
 
 The size of a Nand is three indices into the address space, i.e. `3log_2(i+1+2N)`. There are `N` Nands, totaling `3Nlog_2(i+1+2N)` memory.
 
-The sum of these is `64(i+1+3N) + 3Nlog_2(i+1+2N)`.
+The sum of these is `w(i+1+3N) + 3Nlog_2(i+1+2N)`.
 
-> NB: 64x on state is due to the training layout. Using a full word per wire allows 64 training examples to be evaluated per operation, parallelising training runs.
-> Being constant, it does not change the complexity, but it is the reason training memory is dominated by state where runtime memory is dominated by the genome.
+> NB: the factor `w` on state is due to the word layout. Being constant, it does not change the complexity.
 
 During training, memory complexity is `O(N log N)`.
 
@@ -75,11 +100,11 @@ Every thread evaluating a batch needs its own address space and output buffer, s
 
 Canonicalised genomes are more efficient. The maximum size of their address space is `i+1+N`, with the output buffer again adding `N`.
 
-Runtime uses a bit-packed layout, so a wire is one bit.
+A wire is again one word of `w` bits.
 
 The size of canonicalised Nands is only two indices, i.e. `2log_2(i+1+N)`. There are `N` Nands, totaling `2Nlog_2(i+1+N)` memory.
 
-The sum of these is `i+1+2N + 2Nlog_2(i+1+N)`.
+The sum of these is `w(i+1+2N) + 2Nlog_2(i+1+N)`.
 
 At runtime, memory complexity is also `O(N log N)`.
 
@@ -92,6 +117,6 @@ A canonicalised genome is never written to, so it can be indexed in place. Only 
 | Region                        | Size                 | Complexity   |
 | ----------------------------- | -------------------- | ------------ |
 | Nands                         | `2Nlog_2(i+1+N)`     | `Θ(N log N)` |
-| address space + output buffer | `i+1+2N`             | `Θ(N)`       |
+| address space + output buffer | `w(i+1+2N)`          | `Θ(N)`       |
 
 On hardware with flashable ROM, RAM usage can be made linear in `N`.
