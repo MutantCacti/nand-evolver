@@ -9,6 +9,18 @@
 
 #include <stdlib.h>
 
+/* Generation: measure every individual, then Selector and then Mutator. */
+static int evolver_generation(const Config * config, const Dataset * dataset,
+                              uint64_t seed, size_t generation,
+                              Population * population, Record * records);
+
+/* Checkpoints are the Evolver's own: the population in training form at a
+ * generation boundary, read back only here, never exported. */
+static int evolver_checkpoint_write(const char * run_dir, size_t generation,
+                                    const Population * population);
+static int evolver_checkpoint_read(const char * run_dir,
+                                   size_t * generation, Population * population);
+
 int evolver_run(const Config * config, const Dataset * dataset,
                 uint64_t seed, const char * run_dir)
 {
@@ -16,7 +28,7 @@ int evolver_run(const Config * config, const Dataset * dataset,
     abort();    /* stub */
 }
 
-int evolver_generation(const Config * config, const Dataset * dataset,
+static int evolver_generation(const Config * config, const Dataset * dataset,
                        uint64_t seed, size_t generation,
                        Population * population, Record * records)
 {
@@ -25,14 +37,14 @@ int evolver_generation(const Config * config, const Dataset * dataset,
     abort();    /* stub */
 }
 
-int evolver_checkpoint_write(const char * run_dir, size_t generation,
+static int evolver_checkpoint_write(const char * run_dir, size_t generation,
                              const Population * population)
 {
     (void)run_dir; (void)generation; (void)population;
     abort();    /* stub */
 }
 
-int evolver_checkpoint_read(const char * run_dir,
+static int evolver_checkpoint_read(const char * run_dir,
                             size_t * generation, Population * population)
 {
     (void)run_dir; (void)generation; (void)population;

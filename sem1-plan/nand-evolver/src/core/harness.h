@@ -78,7 +78,13 @@ int lane_harness_individual(const Genome * genome, Arena * arena,
                             const HarnessHooks * hooks, unsigned tick_limit,
                             Record * records_out);
 
-/* Example: one lane group of up to WORD_BITS examples, packed into lanes. */
+/* Example: one lane group of up to WORD_BITS examples, packed into lanes.
+ *
+ * Public for one reason: the differential test needs a per-example, in-memory
+ * entry on both sides, so that it can read each example's output region out of
+ * the Arena and compare it with the packed run. Reaching this level only
+ * through lane_harness_individual would leave the test seeing just the last
+ * example's arena, since the arena is cleared between examples. */
 int lane_harness_example(const Genome * genome, Arena * arena,
                          const Example * group, size_t group_size,
                          const HarnessHooks * hooks, unsigned tick_limit,
@@ -100,7 +106,9 @@ DeploymentIO;
 int packed_harness_deployment(const Model * model, Arena * arena,
                               const DeploymentIO * io, unsigned tick_limit);
 
-/* Example: one example's rounds, one bit per wire. */
+/* Example: one example's rounds, one bit per wire. Public for the same reason
+ * as its lane counterpart: deployment reads a stream, so the test needs this
+ * in-memory entry instead. */
 int packed_harness_example(const Model * model, Arena * arena,
                            const Example * example, unsigned tick_limit,
                            word * outputs_out);

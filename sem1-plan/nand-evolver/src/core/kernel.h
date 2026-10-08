@@ -26,16 +26,12 @@
 #include <stddef.h>
 
 /* Round: tick until ready or the limit. Returns ticks used.
- * Lanes still unready at the limit answer with whatever their output holds. */
+ * Lanes still unready at the limit answer with whatever their output holds.
+ *
+ * The whole of the Kernel's boundary. The Tick level is one function too, but a
+ * private one: only the round calls it, so a test reaches it by running a round
+ * with a tick limit of 1. The ready check is private for the same reason. */
 unsigned lane_kernel_round(const Genome * genome, Arena * arena, unsigned tick_limit);
 unsigned packed_kernel_round(const Model * model, Arena * arena, unsigned tick_limit);
-
-/* Tick: evaluate every Nand, then write back in reverse index order. */
-void lane_kernel_tick(const Genome * genome, Arena * arena);
-void packed_kernel_tick(const Model * model, Arena * arena);
-
-/* Which lanes (train) or whether this example (infer) now reads as ready. */
-word lane_kernel_ready(const Genome * genome, const Arena * arena);
-int packed_kernel_ready(const Model * model, const Arena * arena);
 
 #endif

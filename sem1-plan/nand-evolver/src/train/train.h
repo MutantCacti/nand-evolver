@@ -104,17 +104,10 @@ Population;
 int evolver_run(const Config * config, const Dataset * dataset,
                 uint64_t seed, const char * run_dir);
 
-/* Generation: measure every individual, then Selector and then Mutator. */
-int evolver_generation(const Config * config, const Dataset * dataset,
-                       uint64_t seed, size_t generation,
-                       Population * population, Record * records);
-
-/* Checkpoints are the Evolver's own: the population in training form at a
- * generation boundary, read back only here, never exported. */
-int evolver_checkpoint_write(const char * run_dir, size_t generation,
-                             const Population * population);
-int evolver_checkpoint_read(const char * run_dir,
-                            size_t * generation, Population * population);
+/* The Generation level is one function too, and so is each half of
+ * checkpointing, but all three are private to evolver.c: only the run calls
+ * them. A test resumes through evolver_run itself, by running to a generation
+ * count and then running again to a higher one, since both are parameters. */
 
 /* ---- selector.c -------------------------------------------------------- */
 
