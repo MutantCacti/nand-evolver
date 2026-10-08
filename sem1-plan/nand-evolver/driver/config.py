@@ -15,9 +15,13 @@ prefixes, matching ARCHITECTURE's taxonomy:
 
 Two hashes, because two different things need identifying:
 
-    experiment hash   protocol + training + inference + parameter. Identifies
-                      results, keys runs/, and is what the determinism test
-                      holds fixed while execution keys vary.
+    experiment hash   protocol, training, inference, parameter and task keys;
+                      not replicate, not execution. Identifies results, is
+                      recorded by every run directory, and is what the
+                      determinism test holds fixed while execution keys vary.
+                      Task belongs in it: two experiments differing only in
+                      their task must not share a hash, or the Driver's refusal
+                      to combine mismatched runs would not catch mixing them.
     build hash        the experiment hash plus the compile-time execution keys.
                       Identifies one binary, and is what a binary checks.
 

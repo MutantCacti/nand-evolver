@@ -30,9 +30,10 @@
  * only numbers live here. Grows with the experiment-file schema.
  *
  * Two hashes, because two different things need identifying. The experiment
- * hash covers protocol, training, inference and parameter keys: it identifies
- * results, keys runs/, and is what the determinism test holds fixed. The build
- * hash adds the compile-time execution keys: it identifies this binary. */
+ * hash covers protocol, training, inference, parameter and task keys, but not
+ * replicate or execution: it identifies results, is recorded by every run
+ * directory, and is what the determinism test holds fixed. The build hash adds
+ * the compile-time execution keys: it identifies this binary. */
 typedef struct
 {
     const char * name;          /* the experiment file's own filename, less .cfg */
