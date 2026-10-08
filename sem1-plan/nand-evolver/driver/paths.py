@@ -12,3 +12,12 @@ Driver reads or writes is named here and nowhere else.
 Created: 2026-10-08
  Author: Maxence Morel Dierckx
 """
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+EXPERIMENTS = ROOT / "experiments"
+STUDIES = ROOT / "studies"
+BUILD = ROOT / "build"
+DATA = ROOT / "data"
+RUNS = ROOT / "runs"

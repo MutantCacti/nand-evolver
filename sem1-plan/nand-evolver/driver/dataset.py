@@ -3,8 +3,8 @@
 Source → Dataset files. Each example's raw bits are chunked into task.rounds
 rounds of input; each graded round gets its expected output bits from the
 target. One file per split (train, validation, test) in data/<name>/, written
-once per experiment and never changed. The file format is the one train's
-dataset.c maps.
+once per experiment and never changed. The byte layout is specified in the
+Dataset comment of src/train/train.h.
 
 Created: 2026-10-08
  Author: Maxence Morel Dierckx
