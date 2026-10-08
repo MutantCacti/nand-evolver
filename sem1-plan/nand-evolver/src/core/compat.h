@@ -26,8 +26,17 @@
 #error "training.trainer = delta_error requires training.evolver = individual"
 #endif
 
-/* Inherited memory is the state a reset resets to, and the Evolver must keep a
- * parent's Arena alive to supply it. Nothing does that in population mode. */
+/* Inherited memory is the state a reset resets to: a child starts from where
+ * its parent's memory ended. "Where it ended" is only well defined when a
+ * genome's examples are an ordered sequence, which is what individual mode
+ * hands out. In population mode the examples of one genome are an unordered
+ * set divided between workers, so the parent's final memory would be whichever
+ * example happened to run last — making the result depend on how the work was
+ * split, which is the one thing that must never happen.
+ *
+ * So this is not an implementation shortcut that a later Evolver could lift.
+ * Inheriting requires ordered examples per genome, and an Evolver that ordered
+ * them would be individual mode by another name. */
 #if defined(TRAINING_INHERIT_ARENA) && TRAINING_INHERIT_ARENA \
     && !defined(TRAINING_EVOLVER_INDIVIDUAL)
 #error "training.inherit_arena requires training.evolver = individual"

@@ -4,7 +4,10 @@
  *
  * It owns the only loop in the product, over records on stdin: on an input
  * record it calls the Harness for one round and writes one output record, and
- * on a reset record it has the Harness reset the memory space. Because it
+ * on a reset record it has the Harness reset the memory space. The Harness
+ * returns the output region, so packing those words into a record's bits is
+ * all this file does with the memory space — it never computes an offset into
+ * it, because where the output region begins is the Harness's business. Because it
  * returns between rounds, an embedder may choose a round's input after seeing
  * the previous round's output.
  *

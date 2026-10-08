@@ -36,22 +36,28 @@
 void harness_reset(const Genome * genome, Arena * arena, const uint8_t * initial);
 
 /* Run one round: write `inputs` into the input region and ready's start value
- * into the ready wire, call the Kernel, then read the output region.
+ * into the ready wire, call the Kernel, and return the output region.
  *
  * `inputs` is packed bits, bit k being input wire k, each expanded to a whole
- * word on the way in. `outputs` receives the output region packed the same
- * way, and may be NULL — train reads the output region out of the Arena
- * directly, so packing it would be work nobody uses.
+ * word on the way in.
+ *
+ * The return is a pointer to the first of `genome->num_outputs` words inside
+ * the Arena, one per output wire, valid until the next call. It is returned
+ * rather than copied out because a caller handed only an Arena would have to
+ * work out where the output region begins, and that is the one piece of
+ * knowledge this file exists to keep: the Verifier is given this pointer, and
+ * deployed main packs its bits into a record from it. Neither computes an
+ * offset.
  *
  * `ticks` receives one tick count per example in the word (one entry at the
  * reference width). Ticks are charged, so they are per example from the start:
  * a group charged its slowest example's ticks would make the number of
  * examples per word change the result.
  *
- * There is no failure. At the tick limit the output region is read as it
+ * There is no failure. At the tick limit the output region is returned as it
  * stands, which is forced closure: the model always answers. */
-void harness_round(const Genome * genome, Arena * arena,
-                   const uint8_t * inputs, uint8_t * outputs,
-                   uint32_t tick_limit, uint32_t * ticks);
+const word * harness_round(const Genome * genome, Arena * arena,
+                           const uint8_t * inputs,
+                           uint32_t tick_limit, uint32_t * ticks);
 
 #endif

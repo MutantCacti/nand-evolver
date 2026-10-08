@@ -19,9 +19,9 @@ void example_measure(const Genome * genome, Arena * arena,
                      const Dataset * dataset,
                      const uint8_t * inputs, const uint8_t * expected,
                      const uint8_t * initial,
-                     uint32_t * error, uint32_t * ticks)
+                     uint32_t * error, uint32_t * ticks, word * wrong)
 {
     (void)genome; (void)arena; (void)dataset; (void)inputs; (void)expected;
-    (void)initial; (void)error; (void)ticks;
+    (void)initial; (void)error; (void)ticks; (void)wrong;
     abort();    /* stub */
 }

@@ -3,12 +3,21 @@
  * Genome: a graph of Nands, and the wire layout it is addressed through.
  *
  * One type serves both programs. A **canonical** genome is not a second type:
- * canonicalisation reorders Nands so that every Nand's output index equals its
- * own index, which is a property of the data, not a different shape. The model
- * file stores only (a, b) because `out` is then implied, and driver/build.py
- * expands it back into this form when it compiles a model into infer. So the
- * Harness and the Kernel take `const Genome *` in both programs and there is
- * no genome/model split to name.
+ * canonicalisation reorders Nands so that a Nand's position in the array gives
+ * its output wire, which is a property of the data, not a different shape. The
+ * model file stores only (a, b) because `out` is then implied, and
+ * driver/build.py expands it back into this form when it compiles a model into
+ * infer. So the Harness and the Kernel take `const Genome *` in both programs
+ * and there is no genome/model split to name.
+ *
+ * The implied index is **not** the array index. A Nand can never write the
+ * constant wire or the input region, so the first wire it can write is ready:
+ *
+ *     canonical: nands[k].out == 1 + num_inputs + k
+ *
+ * which makes the canonical address space 1 + num_inputs + num_nands, the
+ * README's `i+1+N`, and fixes num_nands at 1 + num_outputs + num_internal —
+ * one Nand per writable wire, the inert ones included.
  *
  * The wire layout, in order, as the README defines it:
  *

@@ -3,9 +3,24 @@
  * The model file: a run's only output, and the deployed program's only input.
  *
  * Holds the canonical genome (only (a, b) per Nand, since a canonical Nand's
- * output index is its own), the input and output sizes, and optionally the
- * memory state a deployment should start from, stored as packed bits so the
- * file does not depend on the word type.
+ * output wire follows from its position: 1 + num_inputs + k), the input and
+ * output sizes, and optionally the memory state a deployment should start
+ * from, stored as packed bits so the file does not depend on the word type.
+ *
+ * **This header is the format's specification.** The file crosses between the
+ * C side and the Driver, so one of them has to own the layout in full rather
+ * than both describing it; driver/build.py reads it and points here.
+ *
+ *     "NMD1"                      4 bytes, MODEL_MAGIC
+ *     u32 num_inputs
+ *     u32 num_outputs
+ *     u32 num_internal
+ *     u32 num_nands               == 1 + num_outputs + num_internal
+ *     u32 initial_bits            0 when there is no initial memory state
+ *     num_nands * { u32 a; u32 b; }
+ *     ceil(initial_bits / 8)      packed bits over the internal region, LSB-first
+ *
+ * Every integer is little-endian.
  *
  * **Only written here, never read here.** The Exporter writes it at the end of
  * a run; driver/build.py reads it and emits build/<name>/model.h, which is

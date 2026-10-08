@@ -58,7 +58,27 @@ int config_load(const char * path);
 /* --------------------------------------------------------------- Dataset  */
 
 /* The train split, mapped read-only. Written by the Driver, never by C.
- * Every example is the same size, so a lookup is an index. */
+ * Every example is the same size, so a lookup is an index.
+ *
+ * **This header is the format's specification.** The file crosses between the
+ * Driver and the C side, so one of them owns the layout in full rather than
+ * both describing it; driver/dataset.py writes it and points here.
+ *
+ *     "NDS1"                      4 bytes
+ *     u32 num_inputs              bits written into the input region per round
+ *     u32 num_outputs             bits compared on a graded round
+ *     u32 rounds                  rounds per example
+ *     u32 num_examples
+ *     u32 num_graded              how many of `rounds` are graded
+ *     ceil(rounds / 8)            graded mask, bit r set when round r is graded
+ *     num_examples * {
+ *         rounds     * ceil(num_inputs  / 8)   input bits, every round in order
+ *         num_graded * ceil(num_outputs / 8)   expected bits, graded rounds only
+ *     }
+ *
+ * Every integer is little-endian and every bit field is packed LSB-first, bit
+ * k being wire k of its region — the same packing a record uses. Because every
+ * example is the same size, the lookup below is an index rather than a scan. */
 typedef struct
 {
     const uint8_t * map;
@@ -107,12 +127,18 @@ int evolver_run(const Dataset * dataset, uint64_t seed, const char * out_dir);
  * evolver.c already carries two loops, the work split and checkpoints. Not a
  * component: it has the Harness reset the Arena, runs the example's rounds,
  * calls the Verifier on the graded ones, and reports the example's error and
- * ticks without combining them with anything. */
+ * ticks without combining them with anything.
+ *
+ * `wrong` takes the Verifier's per-wire record from the example's last graded
+ * round, num_outputs words, or is NULL when nobody wants it. It is here
+ * because the Trainer needs that evidence and the Evolver is what calls the
+ * Trainer: without it, individual mode could not see what it is meant to
+ * learn from. NULL in population mode, where nothing reads it. */
 void example_measure(const Genome * genome, Arena * arena,
                      const Dataset * dataset,
                      const uint8_t * inputs, const uint8_t * expected,
                      const uint8_t * initial,
-                     uint32_t * error, uint32_t * ticks);
+                     uint32_t * error, uint32_t * ticks, word * wrong);
 
 /* -------------------------------------------------- Components it calls  */
 

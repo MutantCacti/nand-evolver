@@ -20,11 +20,11 @@ void harness_reset(const Genome * genome, Arena * arena, const uint8_t * initial
     abort();    /* stub */
 }
 
-void harness_round(const Genome * genome, Arena * arena,
-                   const uint8_t * inputs, uint8_t * outputs,
-                   uint32_t tick_limit, uint32_t * ticks)
+const word * harness_round(const Genome * genome, Arena * arena,
+                           const uint8_t * inputs,
+                           uint32_t tick_limit, uint32_t * ticks)
 {
-    (void)genome; (void)arena; (void)inputs; (void)outputs;
+    (void)genome; (void)arena; (void)inputs;
     (void)tick_limit; (void)ticks;
     abort();    /* stub */
 }
