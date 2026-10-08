@@ -39,8 +39,8 @@ nand-evolver/
 │   ├── core/                   # shared by train and infer
 │   │   ├── compat.h            # every forbidden combination of keys, each an #error naming the pair; included by every translation unit
 │   │   ├── word.h              # the word type: one per wire, every bit the same value; WORD_BITS; the lane_width rule
-│   │   ├── genome.h            # Genome and Nand (training and canonical forms); wire layout (constant, input, ready, output, internal)
-│   │   ├── genome.c            # create, copy, validate; the only code that knows the wire layout
+│   │   ├── genome.h            # Genome and Nand; the wire layout documented (constant, input, ready, output, internal), addressed only by core/harness.c
+│   │   ├── genome.c            # create (fresh or from a parent), validate, free
 │   │   ├── arena.h             # Arena: one memory space. Type only; whoever owns the level above allocates it
 │   │   ├── model.h
 │   │   ├── model.c             # model file: canonical genome, input/output sizes, optional initial memory state packed as bits
@@ -72,7 +72,7 @@ nand-evolver/
 │   ├── test_resume.c           # stop at a generation boundary and resume → bit-identical to an uninterrupted run
 │   ├── test_records.py         # cross-program: one multi-round example through train, and through infer as 0x01 records → same outputs
 │   └── test_determinism.py     # same experiment hash and seed, varying every execution key → identical model file, checkpoints and per-generation records
-├── build/<name>/               # generated, git-ignored: config.h, the build hash, binaries
+├── build/<name>/               # generated, git-ignored: config.h, model_data.h (the model as Nands, for infer), the build hash, binaries
 ├── runs/<name>/<seed>/         # generated, git-ignored: the experiment hash, run log, checkpoints, model file, report
 ├── data/                       # raw Sources (MNIST), git-ignored
 ├── docs/                       # ARCHITECTURE, DECISIONS and FILESYSTEM, moved here when SYN ends
