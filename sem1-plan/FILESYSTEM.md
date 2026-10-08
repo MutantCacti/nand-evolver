@@ -12,7 +12,7 @@ nand-evolver/
 │   ├── __main__.py             # `python -m driver run <experiment>` | `list` | `plot --type loss <experiment|study>`
 │   ├── experiment.py           # Experiment (main entry): run its stages, skipping any whose outputs already exist
 │   ├── study.py                # Study: a named set of experiments, recoverable from runs made independently
-│   ├── config.py               # experiment file schema (protocol, training, inference, parameter, execution; task, replicate); experiment and build hashes
+│   ├── config.py               # experiment file schema (protocol, training, inference, parameter, execution, task); experiment and build hashes
 │   ├── build.py                # protocol + algorithm choices → -D flags → make; embeds the experiment file and the model
 │   ├── sources.py              # raw task data readers (XOR/MUX tables, MNIST files)
 │   ├── targets.py              # each target convention, both directions: label → expected bits and back (raw bits, one-hot)
@@ -75,10 +75,10 @@ nand-evolver/
 
 - **Names, not hashes, on disk.**
   - Every experiment file has a human-readable `name`. `build/`, `runs/` and `data/` are git-ignored but meant to be read: they are keyed by name, so an agent can read outputs without the Driver.
-  - Two hashes, never used as paths. The **experiment hash** (protocol, training, inference, parameter and task keys; not replicate or execution) identifies results: every run directory records it, and the Driver refuses to combine runs whose experiment hashes differ under one name. The **build hash** adds the compile-time execution keys: it is stored in `build/<name>/` and checked by the binary.
+  - Two hashes, never used as paths. The **experiment hash** (protocol, training, inference, parameter and task keys; not `parameter.seeds` or execution) identifies results: every run directory records it, and the Driver refuses to combine runs whose experiment hashes differ under one name. The **build hash** adds the compile-time execution keys: it is stored in `build/<name>/` and checked by the binary.
   - Names come directly from the actual file name of the experiment file. For example, the `name` of `mux.cfg` is 'mux'.
 - **Configuration flows down.**
-  - **Experiment files** are flat `key = value` with dotted keys (`protocol.kernel = reference`, `training.selector = tournament`, `inference.arena = static`, `parameter.population = 256`, `task.rounds = 28`, `replicate.seeds = 5`, `execution.threads = 8`), readable by Python and C alike.
+  - **Experiment files** are flat `key = value` with dotted keys (`protocol.kernel = reference`, `training.selector = tournament`, `inference.arena = static`, `parameter.population = 256`, `task.rounds = 28`, `parameter.seeds = 5`, `execution.threads = 8`), readable by Python and C alike.
   - **`build.py`** writes `#define`s per binary: protocol keys go to both, training keys to `train` only, inference keys to `infer` only, and compile-time execution keys (e.g. backend, lane width) to whichever binary they shape. It embeds the experiment file in `train`. `core/` headers read the protocol `#define`s.
   - **`config.c`** refuses an experiment file whose build hash differs from the binary's. Start-up execution keys (e.g. thread count) are read like parameters.
 - **Execution is configuration, outside the experiment hash.** `execution.*` keys are explicit so studies can compare runtimes. Varying them must never change results, which `test_determinism` checks. The **machine** (processor, OS, compiler version) is not configured; every report records it.
