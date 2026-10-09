@@ -10,7 +10,10 @@ that copy at start-up, so one build serves a sweep over parameters. Task keys
 never reach C: train learns the task's shape from the Dataset file. For
 infer, the model file is read here and emitted as build/<name>/model_data.h:
 its Nands expanded back to (a, b, 1 + num_inputs + k), so no C code parses a
-model file. The model file's layout is specified in src/core/model.h.
+model file. It defines MODEL_NUM_INPUTS, MODEL_NUM_OUTPUTS, MODEL_NUM_INTERNAL,
+MODEL_NUM_WIRES, MODEL_NUM_NANDS, MODEL_TICK_LIMIT (the limit the model was
+trained under, which is part of what it computes), MODEL_NANDS[] and,
+when there is one, the initial memory state. The model file's layout is specified in src/core/model.h.
 
 Created: 2026-10-08
  Author: Maxence Morel Dierckx

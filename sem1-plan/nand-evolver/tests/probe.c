@@ -16,6 +16,9 @@
  * end of the script the genome is handed to exporter_export, which
  * canonicalises it and writes <out_dir>/model.
  *
+ * Built like train, with the experiment file embedded, so it runs under the
+ * same configuration: the tick limit it uses is the one the model file carries.
+ *
  * Created: 2026-10-08
  *  Author: Maxence Morel Dierckx
  */
@@ -38,7 +41,7 @@ static size_t hex_bytes(const char * hex, uint8_t * bytes, size_t max)
 
 int main(int argc, char ** argv)
 {
-    if (argc != 2)
+    if (argc != 2 || config_load(NULL) != 0)
         return 2;
 
     char line[256];
@@ -64,7 +67,7 @@ int main(int argc, char ** argv)
                 hex_bytes(hex, inputs + in_bytes * rounds++, in_bytes);
             word outputs[MAX_ROUNDS * 64];
             uint32_t ticks[MAX_ROUNDS * EXECUTION_LANE_WIDTH];
-            harness_example(genome, &arena, NULL, inputs, rounds, 1u << 16, outputs, ticks);
+            harness_example(genome, &arena, NULL, inputs, rounds, config->tick_limit, outputs, ticks);
             for (uint32_t r = 0; r < rounds; r++) {
                 const word * out = outputs + (size_t)r * genome->num_outputs;
                 for (uint32_t byte = 0; byte < (genome->num_outputs + 7) / 8; byte++) {

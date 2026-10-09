@@ -45,7 +45,7 @@ nand-evolver/
 │   │   ├── model.h
 │   │   ├── model.c             # model file: canonical genome, input/output sizes, optional initial memory state packed as bits
 │   │   ├── harness.h           # Harness (Example, Round): run a whole example (train); reset and run one round (infer's entry, and the steps of an example)
-│   │   ├── harness.c           # the protocol in one place: reset at an example's start, write inputs and ready's start value, call the Kernel, read outputs
+│   │   ├── harness.c           # the protocol in one place: example (reset, then every round), reset, round (write inputs and ready's start value, call the Kernel, read outputs)
 │   │   ├── kernel.h            # Kernel (Round, Tick): ticks → instructions; ready check; tick limit; ticks per example
 │   │   └── kernel.c            # the reference scheme (every Nand, every tick); alternative schedules are #if blocks here
 │   ├── train/                  # the search
@@ -57,7 +57,6 @@ nand-evolver/
 │   │   ├── evolver.c           # Evolver (Run, Generation): flattens the generation into (genome, example) pairs and splits them; checkpoints; hands the best genome to the Exporter
 │   │   ├── selector.c          # Selector: compares genomes; owns every reduction over examples
 │   │   ├── mutator.c           # Mutator: parents → children by random changes
-│   │   ├── trainer.c           # Trainer: changes a genome between examples (individual-mode variant only)
 │   │   ├── verifier.c          # Verifier: produced vs expected wires on graded rounds → error per example
 │   │   ├── exporter.c          # Exporter: canonicalises the best genome (README; config-driven) and writes the model file via core/model.c; called once by the Evolver at the end of a run
 │   │   └── logger.c            # Logger: the run log; every component writes its own events; per-thread buffers merged at generation boundaries, wall-time order within a generation
