@@ -15,7 +15,7 @@
  * the Harness writes into the words changes, because ~(a & b) is already
  * correct either way. It is not configured until it exists.
  *
- * EXECUTION_WORD_BITS is configured, though, because it is the one execution
+ * EXECUTION_BITS_PER_WORD is configured, though, because it is the one execution
  * key P1 can vary: the width of a word changes memory and speed and must not
  * change a result, which is exactly what test_determinism checks.
  *
@@ -30,16 +30,16 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#if EXECUTION_WORD_BITS == 8
+#if EXECUTION_BITS_PER_WORD == 8
 typedef uint8_t word;
-#elif EXECUTION_WORD_BITS == 16
+#elif EXECUTION_BITS_PER_WORD == 16
 typedef uint16_t word;
-#elif EXECUTION_WORD_BITS == 32
+#elif EXECUTION_BITS_PER_WORD == 32
 typedef uint32_t word;
-#elif EXECUTION_WORD_BITS == 64
+#elif EXECUTION_BITS_PER_WORD == 64
 typedef uint64_t word;
 #else
-#error "execution.word_bits names no word this build provides"
+#error "execution.bits_per_word names no word this build provides"
 #endif
 
 #define WORD_BITS ((size_t)(sizeof(word) * 8))

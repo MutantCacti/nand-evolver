@@ -10,10 +10,9 @@
  * start value alone can never answer.
  *
  * One function. The tick loop is the Round level and the instruction loop is
- * the Tick level, and both belong to this file. P1 has one scheme, so there is
- * nothing to select between; alternative schemes (a Nand that runs every k-th
- * tick, a next-index frontier) belong here too, behind the key that arrives
- * with them, rather than behind a new interface.
+ * the Tick level, and both belong to this file; alternative scheduling schemes
+ * (a Nand that runs every k-th tick, a next-index frontier) are #if blocks
+ * here rather than new interfaces.
  *
  * Created: 2026-10-08
  *  Author: Maxence Morel Dierckx

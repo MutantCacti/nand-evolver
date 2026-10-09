@@ -20,6 +20,16 @@ void harness_reset(const Genome * genome, Arena * arena, const uint8_t * initial
     abort();    /* stub */
 }
 
+void harness_example(const Genome * genome, Arena * arena,
+                     const uint8_t * initial, const uint8_t * inputs,
+                     uint32_t rounds, uint32_t tick_limit,
+                     word * outputs, uint32_t * ticks)
+{
+    (void)genome; (void)arena; (void)initial; (void)inputs;
+    (void)rounds; (void)tick_limit; (void)outputs; (void)ticks;
+    abort();    /* stub */
+}
+
 const word * harness_round(const Genome * genome, Arena * arena,
                            const uint8_t * inputs,
                            uint32_t tick_limit, uint32_t * ticks)

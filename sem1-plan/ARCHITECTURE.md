@@ -28,9 +28,10 @@ A level's `#` lists everything that *any* configuration of the program might cre
 Study (Driver)                                              # Source
 └─* Experiment (Driver)                                     # Config, Dataset
     └─* Run (Evolver, Exporter, Logger)                     # Rng, Model, Log
-        └─* Generation (Evolver, Selector, Mutator)         # Genome, Arena
-            └─* Example (Evolver, Harness, Trainer)         # Arena
-                └─* Round (Kernel, Harness, Verifier)       # Arena
+        └─* Generation (Evolver, Selector, Mutator, Verifier, Trainer)
+                                                            # Genome, Arena
+            └─* Example (Harness)                           # Arena
+                └─* Round (Kernel, Harness)                 # Arena
                     └─* Tick (Kernel)                       # Arena
                         └─* Instruction                     # Arena
 ```
@@ -46,7 +47,7 @@ Deployment (main)                           # Arena, Model
 
 The deployed program has no Study, Experiment, Run or Generation level, because an embedder shipping a model does not loop over experiments, seeds or candidate genomes. Those levels are the workbench's, not the product's.
 
-**It has no Example level either, and that is not an omission.** An example is a lifetime (defined at the Example level below), and a lifetime is delimited rather than iterated. In train the Evolver genuinely loops over examples, so Example is a level. Deployed, `main` loops over *records* and an example is the span between two resets, so there is nothing to loop over and no function to own. The concept is unchanged in both programs; only in one of them is it a loop.
+**It has no Example level either, and that is not an omission.** An example is a lifetime (defined at the Example level below), and a lifetime is delimited rather than iterated. In train the Harness runs one example at a time, looping its rounds, so Example is a level there. Deployed, `main` loops over *records* and an example is the span between two resets, so there is nothing to loop over and no function to own — the Harness is entered a level lower, one round per record. The concept is unchanged in both programs; only in one of them is it a loop.
 
 ## Who owns the loops
 
@@ -55,18 +56,24 @@ Four components own all the loops. Every other component is *called* by one of t
 | Owner | Sits at | Repeats | Calls |
 |---|---|---|---|
 | **Driver** | Study, Experiment | Experiments, Runs | builds the Dataset once per experiment |
-| **Evolver** | Run, Generation, Example | Generations, work units, Rounds | Selector then Mutator, after a generation's work units are measured; the Harness each round and at every example boundary; the Verifier on graded rounds; the Trainer between examples in the individual-mode variant; the Exporter once, at the end of the run |
+| **Evolver** | Run, Generation | Generations, work units | the Harness once per example; the Verifier on each graded round of what comes back; the Trainer between examples, where there is one; Selector then Mutator once a generation's work units are measured; the Exporter once, at the end of the run |
+| **Harness** | Example | Rounds | the Kernel, once per round |
 | **main** (infer) | Deployment | Records, and so Rounds | the Harness on each input record, and to reset on each reset record |
 | **Kernel** | Round, Tick | Ticks, Instructions | none; it evaluates Nands directly |
 
-**The Harness owns no loop.** It is called with arguments and returns a value, and it is the only code that knows the wire layout:
+**The Harness owns one level, Example, and it is the only code that knows the wire layout.** It is entered three ways, and each exists for a reason the others don't cover:
 
-- **at a round:** write the input values and ready's start value into the Arena, call the Kernel, read the output region back;
-- **at the start of an example:** reset the Arena to its start-of-example state, which is passed in (nothing, or an inherited memory state).
+- **one example:** reset the memory space, then run every one of the example's rounds in order, keeping the space across them. This is the Example level, and it is train's entry, because there every round of an example is known in advance.
+- **one round:** write the input values and ready's start value into the memory space, call the Kernel, read the output region back. This is the deployed program's entry, because there rounds arrive one at a time and an embedder reacting to an output needs control back between them. It is also the inner step of an example.
+- **a reset:** put the memory space into its start-of-example state, which is passed in (nothing, or an inherited memory state). This is what a reset record asks for, and the first step of an example.
+
+What it does *not* own is a loop over examples. That was the Individual level, and hiding it here was what stopped the Evolver dividing its work: a loop over rounds is inside one example and so inside one work unit, while a loop over examples is the work unit itself.
+
+**It never learns that grading exists.** The Verifier and the Trainer are leaves the Evolver calls, on what the Harness hands back. So nothing on the path a genome walks knows which rounds are scored, which is part of why that path is identical in both programs.
 
 **The Harness is the same component in both programs**, which is what makes a trained genome mean the same thing when deployed: every part of the path a genome experiences is shared code. It differs only in what it is handed, a Genome in train and a Model in infer.
 
-At Round the owner is not the entry point, and this is the one place in the trees where that happens. The caller — the Evolver in train, `main` in infer — calls the **Harness**, which writes the inputs and ready's start value, calls the **Kernel**, whose loop over ticks is the Round level, and then reads the outputs.
+At Round the owner is not the entry point, and this is the one place in the trees where that happens. The caller — the Harness in train, running an example's rounds; `main` in infer, running a record's — calls the Harness's round entry, which writes the inputs and ready's start value, calls the **Kernel**, whose loop over ticks is the Round level, and then reads the outputs.
 
 ## The levels
 
@@ -92,6 +99,8 @@ Top to bottom, for training.
 - the **Selector** compares the results and chooses which genomes become parents;
 - the **Mutator** makes the next population by copying parents' genomes with random changes, e.g. adding a Nand or rewiring an index.
 
+The **Verifier** and the **Trainer** are also called from here, per example rather than per generation: the Evolver hands an example to the Harness, and turns what comes back into an error. They are leaves — neither calls anything else — which is what lets the Harness stay ignorant of grading.
+
 Measuring a generation is the one place work is divided. The Evolver flattens the generation into (genome, example) pairs and splits them; the piece of work it hands out is **one genome and a range of examples**, which is a **work unit**. A range of one is the reference. Nothing in a work unit reads another's state, so they can be measured in any order and in parallel.
 
 - A genome and the memory space it is measured with are *not* one thing. The genome is population state, owned here; the memory space is a worker's scratch, reused from one work unit to the next and cleared at every example boundary. There is no level between Generation and Example.
@@ -100,14 +109,15 @@ Measuring a generation is the one place work is divided. The Evolver flattens th
 **Example**. One problem from the Dataset: a sequence of one or more rounds, with the expected output for each round that is graded.
 - XOR is one round per example. An MNIST image fed one pixel row at a time is 28 rounds, where only the last is graded.
 - **An example is a lifetime.** The memory space is reset at its start and kept across its rounds, and nothing is ever carried from one example into the next. That is the whole of the distinction between a round and an example, and it is why examples are order-independent while rounds are not. An inherited memory state does not break it: inheritance only changes what the reset resets *to*.
-- The Evolver loops over the examples of its work unit. For each, it has the **Harness** reset the memory space, then runs the example's rounds, and records how wrong the example was (its **error**) and how many ticks it took. Results travel up uncombined.
+- The **Harness** runs one example: it resets the memory space, then runs each round in order, and hands back the output region after every round together with the ticks each took. The Evolver, which loops over the examples of its work unit, turns that into the example's **error** by calling the Verifier on the graded rounds. Results travel up uncombined.
+- The level is the Harness's because an example *is* the lifetime of the memory space, and the Harness is what resets it — the only code that knows the layout being reset. A separate component for this level would have to be named for the level rather than for anything it does, which rule 3 forbids.
 
 **Round**. One exchange: input values are written, the genome runs until it signals that its output is ready, and the output region is read. A round also ends after a configured maximum number of ticks, so a genome that never signals still produces a result: the model always answers.
 - Resetting the memory space sets every wire to 0. Ready then follows two independent protocol choices: the value the ready wire is given at the start of each round (0 or 1), and the value that means "ready" (0 or 1). The **Harness** writes ready's start value at the start of every round, together with the inputs, so every round of an example opens the same way.
 - The Kernel checks ready after each tick, never before the first, so every round runs at least one tick and the start value alone can never answer.
 - The reference starts ready at 0 and treats 1 as ready. A genome isn't ready until some Nand drives the wire high, and a Nand reading cleared wires outputs 1, so early genomes answer after their first tick and must learn to hold ready low until their logic has settled. That makes early training faster. The other three combinations are compared against it.
 - The tick maximum is a ceiling on how deep a genome's logic can be, not merely a safety valve. A signal needs one tick per layer it passes through, so a solution needing more layers than the limit allows cannot be found at all — and charging a genome for the ticks it used also charges it for depth.
-- On graded rounds the **Verifier** compares the produced output wires with the expected ones. The comparison is bitwise, so it shows directly which wires are wrong, and the Mutator and Trainer can use that as evidence to choose changes. It exists only in train: it is what turns an answer into an error, and nothing in the product needs that.
+- Grading happens above this level, not in it. The **Verifier** compares a graded round's produced output wires with the expected ones, bitwise, so it shows directly which wires are wrong and the Mutator and Trainer can use that as evidence. It is called by the Evolver on what the Harness hands back, and it exists only in train: turning an answer into an error is what selection needs and what the product has no use for.
 - Bitwise comparison suits targets where each wire stands on its own (one wire per possible answer). For a number written in binary, a wrong high wire and a wrong low wire count the same, so such targets would need a different error.
 
 **Tick** and **Instruction**. A tick is as defined in the README: every Nand is evaluated against the current memory space, then the results are written back in reverse Nand index order. An **instruction** is the evaluation of one Nand.
@@ -143,11 +153,11 @@ Experiment
 │ │ ┌─────────────┼───────────────↓──────────────────────────────┐ │ │
 │ │ │ Example     │          any component                       │ │ │
 │ │ │ ┌───────────┼────────────────────────────────────────────┐ │ │ │
-│ │ │ │ Round     │                                            │ │ │ │
-│ │ │ │ ┌─────────┼──────────────────────────────────────────┐ │ │ │ │
-│ │ │ │ │         │         ┌─────────┐                      │ │ │ │ │
-│ │ │ │ │         └────────>│ Harness │<─────────┐           │ │ │ │ │
-│ │ │ │ │                   └────┬────┘          │           │ │ │ │ │
+│ │ │ │           │         ┌─────────┐                        │ │ │ │
+│ │ │ │           └────────>│ Harness │<─────────┐             │ │ │ │
+│ │ │ │                     └────┬────┘          │             │ │ │ │
+│ │ │ │ Round                    │               │             │ │ │ │
+│ │ │ │ ┌────────────────────────↓───────────────┼───────────┐ │ │ │ │
 │ │ │ │ │ Tick                   │               │           │ │ │ │ │
 │ │ │ │ │ ┌──────────────────────↓───────────────┼──────┐    │ │ │ │ │
 │ │ │ │ │ │  ┌────────┐      ┌────────┐      ┌───┴───┐  │    │ │ │ │ │
@@ -155,10 +165,10 @@ Experiment
 │ │ │ │ │ │  └───↑────┘      └────────┘      └───┬───┘  │    │ │ │ │ │
 │ │ │ │ │ └──────┼───────────────────────────────┼──────┘    │ │ │ │ │
 │ │ │ │ └────────┼───────────────────────────────┼───────────┘ │ │ │ │
-│ │ │ │          │                          ┌────↓─────┐       │ │ │ │
-│ │ │ │          │                          │ Verifier │       │ │ │ │
-│ │ │ │          │                          └────┬─────┘       │ │ │ │
 │ │ │ └──────────┼───────────────────────────────┼─────────────┘ │ │ │
+│ │ │            │                          ┌────↓─────┐         │ │ │
+│ │ │            │                          │ Verifier │         │ │ │
+│ │ │            │                          └────┬─────┘         │ │ │
 │ │ │        ┌───┴─────┐                         │               │ │ │
 │ │ │        │ Trainer │<────────────────────────┤               │ │ │
 │ │ │        └─────────┘                         │               │ │ │
@@ -181,7 +191,7 @@ Experiment
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-The Evolver appears at the bottom because it owns Run, Generation and Example: the boxes drawn inside those are the levels its loops repeat. The **Config** has no arrow leaving it because it is a read-only global, read wherever it is needed rather than passed down. The **Trainer**'s arrow points back up into the Genome: it rewrites the genome between examples, which is why its examples must run in order and why it exists only in the individual-mode variant of the Evolver.
+The Evolver appears at the bottom because it owns Run and Generation: the boxes drawn inside those are the levels its loops repeat. The **Harness** sits inside Example and outside Round for the same reason — it owns the one and is entered at the other. The **Verifier** sits inside Generation and outside Example because it is the Evolver that calls it, on the outputs the Harness hands back. The **Config** has no arrow leaving it because it is a read-only global, read wherever it is needed rather than passed down. The **Trainer**'s arrow points back up into the Genome: it rewrites the genome between examples, which is why its examples must run in order and why it exists only in the individual-mode variant of the Evolver.
 
 ## Configurations
 

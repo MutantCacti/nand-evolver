@@ -13,6 +13,11 @@
  * memory space is cleared at every example boundary, which is what an example
  * already means.
  *
+ * Per work unit it calls harness_example once per example, then the Verifier
+ * on each graded round of what came back. Both the Verifier and (in P2) the
+ * Trainer are leaves called from here, so the Harness never learns that
+ * grading exists.
+ *
  * Created: 2026-10-08
  *  Author: Maxence Morel Dierckx
  */
@@ -26,33 +31,15 @@ static int evolver_generation(const Dataset * dataset, uint64_t seed,
 static int evolver_checkpoint(const char * out_dir, uint32_t generation,
                               Genome * const * population);
 
-#if defined(TRAINING_EVOLVER_POPULATION)
-
-/* Population mode: every (genome, example) pair is independent, so the split
- * is free. */
+/* Every (genome, example) pair is independent, so the split is free. The
+ * variant that orders a genome's examples so a Trainer can rewrite it between
+ * them is P2, and arrives with the key that selects it. */
 int evolver_run(const Dataset * dataset, uint64_t seed, const char * out_dir)
 {
     (void)dataset; (void)seed; (void)out_dir;
     (void)evolver_generation; (void)evolver_checkpoint;
     abort();    /* stub */
 }
-
-#elif defined(TRAINING_EVOLVER_INDIVIDUAL)
-
-/* Individual mode: the Trainer rewrites a genome between examples, so a
- * genome's examples are a sequence and must stay together and in order. The
- * loop is the same one; only the splitting rule changes, which is why this is
- * a variant of the Evolver and not a level of its own. */
-int evolver_run(const Dataset * dataset, uint64_t seed, const char * out_dir)
-{
-    (void)dataset; (void)seed; (void)out_dir;
-    (void)evolver_generation; (void)evolver_checkpoint;
-    abort();    /* stub */
-}
-
-#else
-#error "training.evolver names no Evolver this build provides"
-#endif
 
 static int evolver_generation(const Dataset * dataset, uint64_t seed,
                               uint32_t generation, Genome ** population,

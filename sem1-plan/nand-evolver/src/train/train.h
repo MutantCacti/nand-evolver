@@ -4,7 +4,7 @@
  *
  * One function per component wherever a component can be one function. The
  * exceptions are the two files that own a resource — dataset.c and logger.c,
- * which need an open and a close — and evolver.c, which owns three levels.
+ * which need an open and a close — and evolver.c, which owns two levels.
  *
  * Configuration does not appear in any signature. Protocol, training,
  * inference and compile-time execution choices are `#define`s; parameters and
@@ -123,23 +123,6 @@ uint64_t rng_value(uint64_t seed, const uint32_t * path, size_t depth);
  * complete. The one place work is divided. */
 int evolver_run(const Dataset * dataset, uint64_t seed, const char * out_dir);
 
-/* The Evolver's function at the Example level, in its own file because
- * evolver.c already carries two loops, the work split and checkpoints. Not a
- * component: it has the Harness reset the Arena, runs the example's rounds,
- * calls the Verifier on the graded ones, and reports the example's error and
- * ticks without combining them with anything.
- *
- * `wrong` takes the Verifier's per-wire record from the example's last graded
- * round, num_outputs words, or is NULL when nobody wants it. It is here
- * because the Trainer needs that evidence and the Evolver is what calls the
- * Trainer: without it, individual mode could not see what it is meant to
- * learn from. NULL in population mode, where nothing reads it. */
-void example_measure(const Genome * genome, Arena * arena,
-                     const Dataset * dataset,
-                     const uint8_t * inputs, const uint8_t * expected,
-                     const uint8_t * initial,
-                     uint32_t * error, uint32_t * ticks, word * wrong);
-
 /* -------------------------------------------------- Components it calls  */
 
 /* Choose `num_parents` genomes. The only component that combines per-example
@@ -158,19 +141,15 @@ void selector_select(const uint32_t * error, const uint32_t * ticks,
 Genome * mutator_mutate(const Genome * parent, uint64_t seed,
                         uint32_t generation, uint32_t child);
 
-/* Change a genome between examples from the evidence so far — individual mode
- * only. `wrong` is the Verifier's per-wire record of what was wrong on the
- * last graded round. Called by the Evolver, not by the Harness: it rewrites
- * the genome being measured, which is not something a path that carries
- * inputs and outputs should be able to do. */
-void trainer_train(Genome * genome, const word * wrong, uint32_t num_outputs,
-                   uint64_t seed, uint32_t generation, uint32_t example);
-
-/* Compare the output region against the expected bits on a graded round.
- * Bitwise, so it reports which wires were wrong as evidence the Mutator and
- * Trainer can use.
+/* Compare one graded round's output against the expected bits. Bitwise, so it
+ * reports which wires were wrong as evidence the Mutator can use.
  *
- * `produced` points into the Arena's output region, one word per wire;
+ * A leaf: the Evolver calls it after harness_example returns, on round r's
+ * outputs at `outputs + r * num_outputs`. Nothing on the path a genome walks
+ * knows that grading exists, which is what keeps that path identical in both
+ * programs.
+ *
+ * `produced` is one word per output wire;
  * `expected` is the Dataset's packed bits, expanded here because this is the
  * only place that needs them as words. `active` masks the examples in the word
  * that are still in play. `error` takes one count per example, never one per
