@@ -9,8 +9,9 @@
 
 #include <stdlib.h>
 
-int model_write(const char * path, const Genome * genome, const uint8_t * initial)
+int model_write(const char * path, const Genome * genome,
+                uint32_t tick_limit, const uint8_t * initial)
 {
-    (void)path; (void)genome; (void)initial;
+    (void)path; (void)genome; (void)tick_limit; (void)initial;
     abort();    /* stub */
 }
