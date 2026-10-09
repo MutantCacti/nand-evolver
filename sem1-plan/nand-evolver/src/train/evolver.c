@@ -25,9 +25,27 @@
 
 #include <stdlib.h>
 
+/* One generation: measure every (genome, example) pair, then select and
+ * mutate. The per-pair error and ticks are scratch owned here, not arguments:
+ * nothing above a generation reads them, because the Selector consumes them
+ * unreduced and the Logger summarises them, both before this returns. Ticks
+ * are not a separate kind of thing from error either — both are per-pair
+ * results the Selector weighs, so both have the same lifetime.
+ *
+ * What travels up is one number: the index the Selector ranked first. Not its
+ * error, because error is not what "best" means once the Selector weighs
+ * ticks against it, and under a policy like lexicase there is no single score
+ * to compare at all — that is the reason results reach it unreduced.
+ *
+ * Which leaves a question this signature cannot answer: whether the genome
+ * exported at the end is the best of the final generation or the best ever
+ * seen. They are the same thing only if selection keeps the best, and whether
+ * it does is selection policy. The Evolver copies out this generation's best
+ * because the Mutator overwrites `population`; whether it should then compare
+ * that against a previous generation's, and by what measure, is open. */
 static int evolver_generation(const Dataset * dataset, uint64_t seed,
                               uint32_t generation, Genome ** population,
-                              uint32_t * error, uint32_t * ticks);
+                              uint32_t * best);
 static int evolver_checkpoint(const char * out_dir, uint32_t generation,
                               Genome * const * population);
 
@@ -43,10 +61,10 @@ int evolver_run(const Dataset * dataset, uint64_t seed, const char * out_dir)
 
 static int evolver_generation(const Dataset * dataset, uint64_t seed,
                               uint32_t generation, Genome ** population,
-                              uint32_t * error, uint32_t * ticks)
+                              uint32_t * best)
 {
     (void)dataset; (void)seed; (void)generation;
-    (void)population; (void)error; (void)ticks;
+    (void)population; (void)best;
     abort();    /* stub */
 }
 
