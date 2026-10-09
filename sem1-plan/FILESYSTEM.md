@@ -37,15 +37,15 @@ nand-evolver/
 │   └── tasks.cfg               # the four P1 tasks on one figure
 ├── src/
 │   ├── core/                   # shared by train and infer
-│   │   ├── compat.h            # every forbidden combination of keys, each an #error naming the pair; included by every translation unit
-│   │   ├── word.h              # the word type: one per wire, every bit the same value; WORD_BITS
+│   │   ├── compat.h            # every forbidden combination of keys, each an #error naming the pair; included by every translation unit. In P1: the lane_width rules only
+│   │   ├── word.h              # the word type: one per wire, every bit the same value; WORD_BITS; the lane_width rule
 │   │   ├── genome.h            # Genome and Nand; the wire layout documented (constant, input, ready, output, internal), addressed only by core/harness.c
-│   │   ├── genome.c            # create, copy, validate, free
+│   │   ├── genome.c            # create (fresh), copy (from a parent), validate, free
 │   │   ├── arena.h             # Arena: one memory space. Type only; whoever owns the level above allocates it
 │   │   ├── model.h
 │   │   ├── model.c             # model file: canonical genome, input/output sizes, optional initial memory state packed as bits
-│   │   ├── harness.h           # Harness: reset to the start-of-example state; run one round of the protocol. Owns no loop
-│   │   ├── harness.c           # the protocol in one place: write inputs and ready's start value, call the Kernel, read outputs
+│   │   ├── harness.h           # Harness (Example, Round): run a whole example (train); reset and run one round (infer's entry, and the steps of an example)
+│   │   ├── harness.c           # the protocol in one place: reset at an example's start, write inputs and ready's start value, call the Kernel, read outputs
 │   │   ├── kernel.h            # Kernel (Round, Tick): ticks → instructions; ready check; tick limit; ticks per example
 │   │   └── kernel.c            # the reference scheme (every Nand, every tick); alternative schedules are #if blocks here
 │   ├── train/                  # the search
@@ -55,7 +55,6 @@ nand-evolver/
 │   │   ├── dataset.c           # maps the train Dataset file read-only; example lookup from (seed, generation, position)
 │   │   ├── rng.c               # stateless random streams derived from (seed, level indices)
 │   │   ├── evolver.c           # Evolver (Run, Generation): flattens the generation into (genome, example) pairs and splits them; checkpoints; hands the best genome to the Exporter
-│   │   ├── example.c           # the Evolver's function at Example: reset, loop the example's rounds, call the Harness and the Verifier. Not a component
 │   │   ├── selector.c          # Selector: compares genomes; owns every reduction over examples
 │   │   ├── mutator.c           # Mutator: parents → children by random changes
 │   │   ├── trainer.c           # Trainer: changes a genome between examples (individual-mode variant only)
@@ -69,7 +68,7 @@ nand-evolver/
 │   ├── check.h                 # the C tests' one assertion: report, count, continue
 │   ├── test_protocol.c         # README semantics through the Harness and Kernel: ready, tick limit, synchronous ticks, reverse-order writeback, ready start per round, lifetime and reset, initial state, reserved wires, and every word all-zero or all-one
 │   ├── test_lookup.c           # example lookup is pure: same (seed, generation, position) → same example, in any call order
-│   ├── probe.c                 # fixture: a hand-written genome through train's Harness, then exported (`make probe NAME=<experiment>`)
+│   ├── probe.c                 # fixture: a hand-written genome through harness_example, as train runs it, then exported (`make probe NAME=<experiment>`)
 │   ├── conftest.py             # a private workbench per test (driver/paths.py redirected) and a tiny experiment
 │   ├── test_records.py         # cross-program: probe's answers vs infer's over records, multi-round, one process or many; also canonicalisation preserves behaviour
 │   ├── test_resume.py          # train killed at random moments and restarted → bit-identical model and generation records
@@ -88,13 +87,13 @@ nand-evolver/
 
 - **Names, not hashes, on disk.**
   - Every experiment file has a human-readable `name`. `build/`, `runs/` and `data/` are git-ignored but meant to be read: they are keyed by name, so an agent can read outputs without the Driver.
-  - Two hashes, never used as paths. The **experiment hash** (the `protocol.`, `training.`, `inference.`, `parameter.` and `task.` keys) identifies results: every run directory records it, and the Driver refuses to combine runs whose experiment hashes differ under one name. The **build hash** adds the compile-time execution keys: it is stored in `build/<name>/` and checked by the binary.
+  - Two hashes, never used as paths. The **experiment hash** (the `protocol.`, `parameter.` and `task.` keys) identifies results: every run directory records it, and the Driver refuses to combine runs whose experiment hashes differ under one name. The **build hash** adds the compile-time execution keys: it is stored in `build/<name>/` and checked by the binary.
   - `execution.` is excluded as a whole prefix, because it must never change results. **The seed is excluded too**, being the one thing that varies between the runs of one experiment: a hash including it would identify a run rather than a result. Where the seed is stated is undecided.
   - Names come directly from the actual file name of the experiment file. For example, the `name` of `mux.cfg` is 'mux'.
 - **Configuration flows down, and is never passed.**
-  - **Experiment files** are flat `key = value` with dotted keys (`protocol.ready_start = 0`, `training.evolver = population`, `parameter.population = 256`, `task.rounds = 28`, `execution.word_bits = 8`), readable by Python and C alike.
-  - **Only what P1 varies is configured.** Five keys reach C at compile time — `protocol.ready_start`, `protocol.ready_value`, `training.evolver`, `training.trainer` and `execution.word_bits` — and the rest of the taxonomy is empty until something fills it. Where P1 has one implementation the `#if` is absent rather than a chain of one, because a key that selects between one thing teaches a reader that a choice exists where none does. The Kernel's scheduling schemes, the Selector's policies, a dynamic arena and a GPU backend each arrive with the key that selects them.
-  - **`build.py`** writes `#define`s per binary: protocol keys go to both, training keys to `train` only, inference keys to `infer` only, and compile-time execution keys (the word type, the lane width) to whichever binary they shape. It embeds the experiment file in `train`. `core/` headers read the protocol `#define`s.
+  - **Experiment files** are flat `key = value` with dotted keys (`protocol.kernel = reference`, `parameter.population = 256`, `task.rounds = 28`, `execution.bits_per_word = 8`), readable by Python and C alike.
+  - **Only what P1 varies is configured.** Where P1 has one implementation the `#if` is absent rather than a chain of one, because a key that selects between one thing teaches a reader that a choice exists where none does. Each variant arrives with the key that selects it.
+  - **`build.py`** writes `#define`s per binary: protocol keys and compile-time execution keys (bits per word, lane width) go to both. P1 has no training or inference keys: each returns with the variant that needs it. It embeds the experiment file in `train`. `core/` headers read the protocol `#define`s.
   - **`config.c`** refuses an experiment file whose build hash differs from the binary's, and fills **one read-only global**. No function takes a config argument: configuration that cannot change and is identical everywhere is not a parameter.
 - **Execution is configuration, outside the experiment hash.** `execution.*` keys are explicit so studies can compare runtimes. Varying them must never change results, which `test_determinism` checks. The **machine** (processor, OS, compiler version) is not configured; every report records it.
 - **The model is one file.** `build.py` compiles the model file into `infer`, so a deployed binary carries its model. The model file holds the canonical genome, its input and output sizes, and room for an initial memory state, stored as packed bits and unpacked on load so the file does not depend on the word type.
@@ -121,7 +120,7 @@ nand-evolver/
 3. **Tasks are named in the experiment file:** its source, bit order, target convention, rounds per example and graded rounds are keys. There are no task files and no input codecs. The only output-side convention is how a label becomes expected bits, stated once in `targets.py` (both directions).
 4. **Error and attribution are bitwise.** Expected outputs are bits, so the Verifier and Trainer need nothing but `out ^ expected`. The limit: for a numeric target written in binary, Hamming distance counts a wrong high bit the same as a wrong low bit, so numeric targets need a non-Hamming error. That's outside P1's tasks (XOR, MUX, one-hot MNIST).
 5. **Headers only where shared:** `core/*.h` for both programs, and `train/train.h` for train's components and the tests. Private functions are `static`.
-6. **`src/train/example.c` is a file of the Evolver, not a component.** The Evolver owns Run, Generation and Example, and "one level, one function" makes Example its own function; it gets its own file because `evolver.c` already carries two loops, the work split and checkpoints.
+6. **The Harness owns Example in train.** `harness_example` resets, then runs every round; the Evolver calls the Verifier (and, in individual mode, the Trainer) on what it returns. infer has no Example level, so it enters at `harness_round` and resets on `0x00`.
 
 ## Answers to the review questions
 
@@ -130,8 +129,8 @@ nand-evolver/
 3. **Documentation:** the README at the root (the protocol and the record format), `docs/` for the plan documents once SYN ends, and the existing per-file header comments.
 4. **Headers:** only at shared boundaries (decision 5).
 5. **Most overloaded:**
-   - **`evolver.c`:** both loops, the work split and checkpoints. Canonicalisation and the model write (Exporter), logging (Logger) and the Example level (`example.c`) have moved out; the work split could follow if it grows.
-   - **`core/harness.c`:** the whole protocol, for both programs. It owns no loop, which keeps it short, but it is the file where a mistake is most expensive.
+   - **`evolver.c`:** both loops, the work split and checkpoints. Canonicalisation and the model write (Exporter), and logging (Logger) have moved out; the work split could follow if it grows.
+   - **`core/harness.c`:** the whole protocol, for both programs. It owns the loop over an example's rounds, and it is the file where a mistake is most expensive.
    - **Smallest:** `word.h`, `arena.h`, `records.h` and `verifier.c` may merge into their callers once written.
 
 ## Rulings from the 2A review (mutant)

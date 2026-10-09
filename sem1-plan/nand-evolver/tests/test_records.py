@@ -9,8 +9,8 @@ more:
   - **Canonicalisation preserves behaviour.** The genome below has a junior
     Nand losing a collision and an internal wire nothing writes, so the
     Exporter must prune and renumber it. infer runs only the canonical form.
-  - **An example is a lifetime in both programs.** train resets at the start
-    of each example (the probe's `reset`), infer on a 0x00 record. The
+  - **An example is a lifetime in both programs.** train's Harness resets at
+    the start of each example it runs, infer on a 0x00 record. The
     examples here are multi-round and the genome carries memory between
     rounds, so resetting between rounds, or failing to reset between
     examples, changes an answer.
@@ -62,9 +62,7 @@ def trained(tiny, probe, workbench):
     name = tiny("records")
     script = [f"shape {INPUTS} {OUTPUTS} {INTERNAL}"]
     script += [f"nand {a} {b} {out}" for a, b, out in GENOME]
-    for rounds in EXAMPLES:
-        script.append("reset")
-        script += [f"round {packed_hex(bits)}" for bits in rounds]
+    script += ["example " + " ".join(packed_hex(bits) for bits in rounds) for rounds in EXAMPLES]
     out_dir = workbench / "probe-run"
     out_dir.mkdir()
     result = subprocess.run([str(probe(name)), str(out_dir)], input="\n".join(script) + "\n",

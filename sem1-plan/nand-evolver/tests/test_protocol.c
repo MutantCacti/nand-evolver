@@ -14,6 +14,7 @@
  *   - ready's start value is written at the start of every round
  *   - memory persists across the rounds of an example and is reset between
  *     examples, to an initial state when one is given
+ *   - an example run whole resets first, then carries memory across its rounds
  *   - inputs are written every round
  *   - genome_validate refuses writes to the constant wire or the inputs
  *   - after every round, every wire is all zeroes or all ones, and the
@@ -51,7 +52,7 @@ static Fixture fixture(uint32_t i, uint32_t m, uint32_t internal, const Nand * n
 {
     GenomeShape shape = { i, m, internal, 16 };
     Fixture f;
-    f.genome = genome_create(&shape, NULL);
+    f.genome = genome_create(&shape);
     for (uint32_t k = 0; k < n; k++)
         f.genome->nands[k] = nands[k];
     f.genome->num_nands = n;
@@ -168,6 +169,26 @@ static void memory_persists_across_rounds_and_resets_between_examples(void)
     release(&f);
 }
 
+static void an_example_is_a_lifetime(void)
+{
+    /* OUT := ~(OUT & OUT) toggles once per one-tick round: 1, 0, 1. The second
+     * call answers the same, so the example began with a reset. */
+    Nand nands[] = { { OUTPUT(1, 0), OUTPUT(1, 0), OUTPUT(1, 0) } };
+    Fixture f = fixture(1, 1, 0, nands, 1);
+    uint8_t inputs[3] = { 0, 0, 0 };
+    for (int call = 0; call < 2; call++) {
+        word outputs[3];
+        uint32_t ticks[3 * EXECUTION_LANE_WIDTH];
+        harness_example(f.genome, &f.arena, NULL, inputs, 3, 1, outputs, ticks);
+        check_words(&f.arena);
+        CHECK(outputs[0] == WORD_ALL);
+        CHECK(outputs[1] == 0);
+        CHECK(outputs[2] == WORD_ALL);
+        CHECK(ticks[0] == 1 && ticks[1] == 1 && ticks[2] == 1);
+    }
+    release(&f);
+}
+
 static void inputs_are_written_every_round(void)
 {
     Nand nands[] = { { INPUT(0), INPUT(0), OUTPUT(1, 0) } };
@@ -222,6 +243,7 @@ int main(void)
     the_lowest_index_wins_a_collision();
     ready_starts_every_round_at_its_start_value();
     memory_persists_across_rounds_and_resets_between_examples();
+    an_example_is_a_lifetime();
     inputs_are_written_every_round();
     a_reset_sets_the_initial_state_when_given();
     validation_refuses_writes_to_reserved_wires();

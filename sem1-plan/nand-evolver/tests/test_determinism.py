@@ -2,7 +2,7 @@
 
 Varying an execution key never changes what a run produces.
 
-Execution keys (thread count, word width) may change time and memory only.
+Execution keys (thread count, bits per word) may change time and memory only.
 So for one experiment hash and one seed, runs that differ only in execution
 must produce an identical model file, identical checkpoints and identical
 per-generation records. Wall time is the one field allowed to differ, and is
@@ -25,7 +25,7 @@ SEED = 3
 VARIANTS = {
     "one_thread": {"execution__threads": 1},
     "four_threads": {"execution__threads": 4},
-    "wide_words": {"execution__word_bits": 64},
+    "wide_words": {"execution__bits_per_word": 64},
 }
 
 

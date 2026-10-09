@@ -10,10 +10,9 @@
  *
  *     shape <inputs> <outputs> <internal>     first line
  *     nand <a> <b> <out>                      the genome's Nands, in index order
- *     reset                                   harness_reset with no initial state
- *     round <hex>                             harness_round with packed input bytes
+ *     example <hex> <hex> ...                 harness_example, one packed hex input per round
  *
- * Each round prints its output region as packed hex bytes on one line. At the
+ * Each example prints one line per round: its output region as packed hex. At the
  * end of the script the genome is handed to exporter_export, which
  * canonicalises it and writes <out_dir>/model.
  *
@@ -25,6 +24,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define MAX_ROUNDS 32
 
 static size_t hex_bytes(const char * hex, uint8_t * bytes, size_t max)
 {
@@ -47,30 +48,33 @@ int main(int argc, char ** argv)
         return 2;
     shape.max_nands = 1 + shape.num_outputs + shape.num_internal + 16;
 
-    Genome * genome = genome_create(&shape, NULL);
+    Genome * genome = genome_create(&shape);
     Arena arena = { NULL, GENOME_NUM_WIRES(genome) };
     arena.wires = calloc(arena.num_wires, sizeof(word));
-    harness_reset(genome, &arena, NULL);
+    uint32_t in_bytes = (shape.num_inputs + 7) / 8;
 
     while (fgets(line, sizeof line, stdin)) {
         Nand nand;
-        char hex[128];
         if (sscanf(line, "nand %u %u %u", &nand.a, &nand.b, &nand.out) == 3) {
             genome->nands[genome->num_nands++] = nand;
-        } else if (strncmp(line, "reset", 5) == 0) {
-            harness_reset(genome, &arena, NULL);
-        } else if (sscanf(line, "round %127s", hex) == 1) {
-            uint8_t inputs[64] = { 0 };
-            uint32_t ticks;
-            hex_bytes(hex, inputs, sizeof inputs);
-            const word * out = harness_round(genome, &arena, inputs, 1u << 16, &ticks);
-            for (uint32_t byte = 0; byte < (genome->num_outputs + 7) / 8; byte++) {
-                uint8_t packed = 0;
-                for (uint32_t bit = 0; bit < 8 && 8 * byte + bit < genome->num_outputs; bit++)
-                    packed |= (uint8_t)((out[8 * byte + bit] & 1u) << bit);
-                printf("%02x", packed);
+        } else if (strncmp(line, "example", 7) == 0) {
+            uint8_t inputs[MAX_ROUNDS * 8] = { 0 };
+            uint32_t rounds = 0;
+            for (char * hex = strtok(line + 7, " \n"); hex && rounds < MAX_ROUNDS; hex = strtok(NULL, " \n"))
+                hex_bytes(hex, inputs + in_bytes * rounds++, in_bytes);
+            word outputs[MAX_ROUNDS * 64];
+            uint32_t ticks[MAX_ROUNDS * EXECUTION_LANE_WIDTH];
+            harness_example(genome, &arena, NULL, inputs, rounds, 1u << 16, outputs, ticks);
+            for (uint32_t r = 0; r < rounds; r++) {
+                const word * out = outputs + (size_t)r * genome->num_outputs;
+                for (uint32_t byte = 0; byte < (genome->num_outputs + 7) / 8; byte++) {
+                    uint8_t packed = 0;
+                    for (uint32_t bit = 0; bit < 8 && 8 * byte + bit < genome->num_outputs; bit++)
+                        packed |= (uint8_t)((out[8 * byte + bit] & 1u) << bit);
+                    printf("%02x", packed);
+                }
+                printf("\n");
             }
-            printf("\n");
         }
     }
 

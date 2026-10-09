@@ -38,7 +38,7 @@ def test_onehot_target_sets_one_wire():
 def test_experiment_hash_covers_what_is_computed(tiny):
     base = experiment.load(tiny("base")).hash
     assert experiment.load(tiny("threads", execution__threads=1)).hash == base
-    assert experiment.load(tiny("words", execution__word_bits=64)).hash == base
+    assert experiment.load(tiny("words", execution__bits_per_word=64)).hash == base
     assert experiment.load(tiny("population", parameter__population=9)).hash != base
     assert experiment.load(tiny("ready", protocol__ready_start=1)).hash != base
     assert experiment.load(tiny("task", task__source="mux")).hash != base

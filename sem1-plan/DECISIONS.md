@@ -164,3 +164,11 @@ The first stubs were retired (`sem1-plan/nand-evolver-old/`, kept for reference 
 | 13 | Naming | Component first (`harness_*`, `kernel_*`); the type distinguishes genome from model; layout never appears in a name. |
 | 14 | Logs | Ordered by wall time: only generations have a real order, and no log may ever be out of generation order (mutant, 2B review 2nd iteration). Forbidden key combinations are stated once, in `core/compat.h`, as `#error`. |
 | 15 | Expectation | Seq MNIST results wait for P2's lanes. XOR, MUX and MNIST do not. |
+
+## 2B review (mutant, 2026-10-09)
+
+| Topic | Ruling |
+|---|---|
+| Example | **The Harness owns Example in train** (`harness_example`: reset, then every round). Only agentive components may call other files, and `example.c` was a parent with no agentive name, so it is removed. The Verifier and Trainer are leaves, called by the Evolver on what the Harness returns. infer has no Example level and enters at `harness_round`. Supersedes Phase 1 revision items 4 and 5 where they say the Harness owns no loop and the Evolver owns Example. |
+| Genome | `genome_create` is pure (a fresh genome); copying a parent is `genome_copy`. |
+| P1 configuration | Only what P1 needs: `protocol.kernel`, `protocol.ready_start`, `protocol.ready_value`, `parameter.*`, `execution.threads`, `execution.bits_per_word` (renamed from `word_bits`), `execution.lane_width`, `task.*`. Every other key and its `#if` is removed and returns with the optimisation that needs it. |
