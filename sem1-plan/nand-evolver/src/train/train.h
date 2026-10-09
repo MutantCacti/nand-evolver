@@ -128,7 +128,15 @@ int evolver_run(const Dataset * dataset, uint64_t seed, const char * out_dir);
 /* Choose `num_parents` genomes. The only component that combines per-example
  * results, which is why it is handed them unreduced: `error` and `ticks` are
  * num_genomes * num_examples, genome-major. Lexicase selection needs every
- * example separately, so nothing above may have summed them. */
+ * example separately, so nothing above may have summed them.
+ *
+ * `parents[0]` is the genome this policy ranks first, and **it must survive
+ * into the next population unmutated**. That is an invariant every policy
+ * obeys, not a policy of its own: it makes the best of the last generation the
+ * best of the whole run by induction, so nothing ever compares two
+ * generations. It is phrased as a ranking rather than a score because a policy
+ * like lexicase never produces one number, and an invariant it could not state
+ * would not be an invariant. */
 void selector_select(const uint32_t * error, const uint32_t * ticks,
                      uint32_t num_genomes, uint32_t num_examples,
                      uint64_t seed, uint32_t generation,
@@ -137,7 +145,11 @@ void selector_select(const uint32_t * error, const uint32_t * ticks,
 /* A child of `parent` with random changes: rewiring an index, or turning on
  * one of the inert Nands held in reserve. Pure in (seed, generation, child),
  * so the population of a generation does not depend on the order it was made
- * in. */
+ * in.
+ *
+ * Never called for the genome the Selector ranked first: that one is copied
+ * into the next population unchanged, which is the other half of the invariant
+ * above. */
 Genome * mutator_mutate(const Genome * parent, uint64_t seed,
                         uint32_t generation, uint32_t child);
 

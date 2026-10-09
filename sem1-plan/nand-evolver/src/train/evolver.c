@@ -37,12 +37,12 @@
  * ticks against it, and under a policy like lexicase there is no single score
  * to compare at all — that is the reason results reach it unreduced.
  *
- * Which leaves a question this signature cannot answer: whether the genome
- * exported at the end is the best of the final generation or the best ever
- * seen. They are the same thing only if selection keeps the best, and whether
- * it does is selection policy. The Evolver copies out this generation's best
- * because the Mutator overwrites `population`; whether it should then compare
- * that against a previous generation's, and by what measure, is open. */
+ * One number is enough because every generation preserves its best: the
+ * genome ranked first reaches the next population unmutated, so by induction
+ * the best of the last generation measured is the best of the run. The Evolver
+ * keeps one copy and replaces it every generation — it must copy, because the
+ * Mutator overwrites `population` — and never compares two generations, which
+ * is just as well, since under lexicase it would have nothing to compare. */
 static int evolver_generation(const Dataset * dataset, uint64_t seed,
                               uint32_t generation, Genome ** population,
                               uint32_t * best);
