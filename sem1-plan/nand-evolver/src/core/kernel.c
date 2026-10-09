@@ -9,10 +9,9 @@
 
 #include <stdlib.h>
 
-#if defined(PROTOCOL_KERNEL_REFERENCE)
-
-/* The reference: every live Nand, every tick, writes applied in reverse index
- * order. Alternative schemes are #elif branches beside this one. */
+/* Every live Nand, every tick, writes applied in reverse index order. This is
+ * the only scheme P1 has, so it is not configured: an alternative one arrives
+ * with the key that selects it. */
 void kernel_round(const Genome * genome, Arena * arena,
                   uint32_t tick_limit, uint32_t * ticks)
 {
@@ -20,6 +19,3 @@ void kernel_round(const Genome * genome, Arena * arena,
     abort();    /* stub */
 }
 
-#else
-#error "protocol.kernel names no Kernel this build provides"
-#endif

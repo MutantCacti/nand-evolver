@@ -77,10 +77,12 @@ Genome;
 #define GENOME_NUM_WIRES(g) \
     ((size_t)2 + (g)->num_inputs + (g)->num_outputs + (g)->num_internal)
 
-/* Create a genome. Exactly one argument is non-NULL: `shape` for a fresh
- * genome (no live Nands, full capacity reserved), or `parent` to copy one.
- * Copying is the Mutator's first step, so it is not a function of its own. */
-Genome * genome_create(const GenomeShape * shape, const Genome * parent);
+/* A fresh genome of this shape: no live Nands, full capacity reserved. */
+Genome * genome_create(const GenomeShape * shape);
+
+/* A copy of one, the Mutator's first step. Separate from genome_create so
+ * that neither function takes an argument the other ignores. */
+Genome * genome_copy(const Genome * parent);
 
 /* 0 when every index is in range, num_nands <= max_nands, and no Nand writes
  * to the constant wire or into the input region. Used after mutation and by

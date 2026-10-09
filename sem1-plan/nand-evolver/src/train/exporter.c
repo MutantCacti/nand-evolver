@@ -14,14 +14,9 @@
 
 #include <stdlib.h>
 
-#if defined(TRAINING_EXPORTER_CANONICAL)
-
 int exporter_export(const Genome * best, const char * out_dir)
 {
     (void)best; (void)out_dir;
     abort();    /* stub */
 }
 
-#else
-#error "training.exporter names no Exporter this build provides"
-#endif

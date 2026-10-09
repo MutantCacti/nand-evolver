@@ -33,19 +33,10 @@
 
 #include <stdlib.h>
 
-#if defined(INFERENCE_ARENA_STATIC)
-
 /* The whole memory space in static storage, sized from the compiled-in model,
- * so a deployment makes no allocation at all. */
+ * so a deployment makes no allocation at all. Not configured: P1 has no reason
+ * to allocate one dynamically. */
 static word arena_wires[MODEL_NUM_WIRES];
-
-#elif defined(INFERENCE_ARENA_DYNAMIC)
-
-static word * arena_wires;
-
-#else
-#error "inference.arena names no Arena this build provides"
-#endif
 
 int main(void)
 {

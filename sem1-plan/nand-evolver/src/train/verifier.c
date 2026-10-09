@@ -18,8 +18,6 @@
 
 #include <stdlib.h>
 
-#if defined(TRAINING_VERIFIER_HAMMING)
-
 void verifier_verify(const word * produced, const uint8_t * expected,
                      uint32_t num_outputs, word active,
                      uint32_t * error, word * wrong)
@@ -29,6 +27,3 @@ void verifier_verify(const word * produced, const uint8_t * expected,
     abort();    /* stub */
 }
 
-#else
-#error "training.verifier names no Verifier this build provides"
-#endif

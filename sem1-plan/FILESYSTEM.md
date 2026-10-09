@@ -38,9 +38,9 @@ nand-evolver/
 ├── src/
 │   ├── core/                   # shared by train and infer
 │   │   ├── compat.h            # every forbidden combination of keys, each an #error naming the pair; included by every translation unit
-│   │   ├── word.h              # the word type: one per wire, every bit the same value; WORD_BITS; the lane_width rule
+│   │   ├── word.h              # the word type: one per wire, every bit the same value; WORD_BITS
 │   │   ├── genome.h            # Genome and Nand; the wire layout documented (constant, input, ready, output, internal), addressed only by core/harness.c
-│   │   ├── genome.c            # create (fresh or from a parent), validate, free
+│   │   ├── genome.c            # create, copy, validate, free
 │   │   ├── arena.h             # Arena: one memory space. Type only; whoever owns the level above allocates it
 │   │   ├── model.h
 │   │   ├── model.c             # model file: canonical genome, input/output sizes, optional initial memory state packed as bits
@@ -92,7 +92,8 @@ nand-evolver/
   - `execution.` is excluded as a whole prefix, because it must never change results. **The seed is excluded too**, being the one thing that varies between the runs of one experiment: a hash including it would identify a run rather than a result. Where the seed is stated is undecided.
   - Names come directly from the actual file name of the experiment file. For example, the `name` of `mux.cfg` is 'mux'.
 - **Configuration flows down, and is never passed.**
-  - **Experiment files** are flat `key = value` with dotted keys (`protocol.kernel = reference`, `training.selector = tournament`, `inference.arena = static`, `parameter.population = 256`, `task.rounds = 28`, `execution.word_bits = 8`), readable by Python and C alike.
+  - **Experiment files** are flat `key = value` with dotted keys (`protocol.ready_start = 0`, `training.evolver = population`, `parameter.population = 256`, `task.rounds = 28`, `execution.word_bits = 8`), readable by Python and C alike.
+  - **Only what P1 varies is configured.** Five keys reach C at compile time — `protocol.ready_start`, `protocol.ready_value`, `training.evolver`, `training.trainer` and `execution.word_bits` — and the rest of the taxonomy is empty until something fills it. Where P1 has one implementation the `#if` is absent rather than a chain of one, because a key that selects between one thing teaches a reader that a choice exists where none does. The Kernel's scheduling schemes, the Selector's policies, a dynamic arena and a GPU backend each arrive with the key that selects them.
   - **`build.py`** writes `#define`s per binary: protocol keys go to both, training keys to `train` only, inference keys to `infer` only, and compile-time execution keys (the word type, the lane width) to whichever binary they shape. It embeds the experiment file in `train`. `core/` headers read the protocol `#define`s.
   - **`config.c`** refuses an experiment file whose build hash differs from the binary's, and fills **one read-only global**. No function takes a config argument: configuration that cannot change and is identical everywhere is not a parameter.
 - **Execution is configuration, outside the experiment hash.** `execution.*` keys are explicit so studies can compare runtimes. Varying them must never change results, which `test_determinism` checks. The **machine** (processor, OS, compiler version) is not configured; every report records it.

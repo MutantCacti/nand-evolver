@@ -9,9 +9,15 @@
 
 #include <stdlib.h>
 
-Genome * genome_create(const GenomeShape * shape, const Genome * parent)
+Genome * genome_create(const GenomeShape * shape)
 {
-    (void)shape; (void)parent;
+    (void)shape;
+    abort();    /* stub */
+}
+
+Genome * genome_copy(const Genome * parent)
+{
+    (void)parent;
     abort();    /* stub */
 }
 

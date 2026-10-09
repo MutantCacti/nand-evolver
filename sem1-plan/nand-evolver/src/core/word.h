@@ -9,13 +9,15 @@
  * reference still looks correct in bit 0 while lanes break for a reason
  * nobody connects to the write that caused it. test_protocol asserts it.
  *
- * The general rule, which the reference and the optimisation share:
+ * P1 holds one example per word, so every bit of a word is that example's
+ * value. The optimisation P2 adds is to hold one example per *bit*, so a
+ * single pass over the Nands evaluates WORD_BITS examples at once; only what
+ * the Harness writes into the words changes, because ~(a & b) is already
+ * correct either way. It is not configured until it exists.
  *
- *     bit j of a wire's word holds the value of example (j mod lane_width).
- *
- * EXECUTION_LANE_WIDTH is 1 here, so every bit of a word is the same example.
- * In P2 it becomes WORD_BITS and one pass over the Nands evaluates that many
- * examples; only what the Harness writes into the words changes.
+ * EXECUTION_WORD_BITS is configured, though, because it is the one execution
+ * key P1 can vary: the width of a word changes memory and speed and must not
+ * change a result, which is exactly what test_determinism checks.
  *
  * Created: 2026-10-08
  *  Author: Maxence Morel Dierckx

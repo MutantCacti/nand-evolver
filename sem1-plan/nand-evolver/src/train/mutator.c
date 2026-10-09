@@ -15,8 +15,6 @@
 
 #include <stdlib.h>
 
-#if defined(TRAINING_MUTATOR_UNIFORM)
-
 Genome * mutator_mutate(const Genome * parent, uint64_t seed,
                         uint32_t generation, uint32_t child)
 {
@@ -24,6 +22,3 @@ Genome * mutator_mutate(const Genome * parent, uint64_t seed,
     abort();    /* stub */
 }
 
-#else
-#error "training.mutator names no Mutator this build provides"
-#endif

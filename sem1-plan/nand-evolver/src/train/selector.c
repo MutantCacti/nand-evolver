@@ -14,8 +14,6 @@
 
 #include <stdlib.h>
 
-#if defined(TRAINING_SELECTOR_TOURNAMENT)
-
 void selector_select(const uint32_t * error, const uint32_t * ticks,
                      uint32_t num_genomes, uint32_t num_examples,
                      uint64_t seed, uint32_t generation,
@@ -26,6 +24,3 @@ void selector_select(const uint32_t * error, const uint32_t * ticks,
     abort();    /* stub */
 }
 
-#else
-#error "training.selector names no Selector this build provides"
-#endif
